@@ -1,0 +1,81 @@
+[package]
+name = "roto-pong"
+version = "0.1.0"
+edition = "2024"
+authors = ["Paul Robello <probello@gmail.com>"]
+description = "A circular arena Pong/Breakout game with WebGPU"
+repository = "https://github.com/paulrobello/roto-pong"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "roto-pong"
+path = "src/main.rs"
+
+[dependencies]
+# WebGPU rendering
+wgpu = { version = "28", features = ["webgpu", "webgl"] }
+# Math
+glam = { version = "0.31", features = ["bytemuck", "serde"] }
+# GPU buffer helpers
+bytemuck = { version = "1.25", features = ["derive"] }
+# Logging
+log = "0.4"
+# Deterministic RNG
+rand = "0.9"
+rand_pcg = "0.9"
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Hashing for integrity
+blake3 = "1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+# Enable wasm_js for both getrandom versions (0.3 from rand_core, 0.4 direct)
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+getrandom = { version = "0.4", features = ["wasm_js"] }
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Document",
+    "Element",
+    "HtmlCanvasElement",
+    "Navigator",
+    "Gpu",
+    "GpuAdapter",
+    "GpuDevice",
+    "console",
+    "Storage",
+    "Location",
+    "VisibilityState",
+    "FocusEvent",
+    "KeyboardEvent",
+    "MouseEvent",
+    "TouchEvent",
+    "TouchList",
+    "Touch",
+    "DomRect",
+] }
+js-sys = "0.3"
+console_log = "1"
+console_error_panic_hook = "0.1"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+winit = "0.30"
+pollster = "0.4"
+env_logger = "0.11"
+
+[dev-dependencies]
+proptest = "1"
+
+[profile.release]
+lto = true
+opt-level = "z"
+strip = true
+
+[profile.release-web]
+inherits = "release"
+opt-level = "z"
