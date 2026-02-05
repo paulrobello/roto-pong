@@ -253,7 +253,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
 
                         ball.pos =
                             Vec2::new(current_theta.cos() * exit_r, current_theta.sin() * exit_r);
-                        ball.vel = exit_dir * entry_speed;
+                        ball.vel = exit_dir * entry_speed * 0.5; // 50% speed on portal exit
                         ball.state = BallState::Free;
 
                         portal_exits.push((ball_idx, block_id));
@@ -314,7 +314,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
 
                             ball.pos =
                                 Vec2::new(exit_theta.cos() * exit_r, exit_theta.sin() * exit_r);
-                            ball.vel = exit_dir * entry_speed;
+                            ball.vel = exit_dir * entry_speed * 0.5; // 50% speed on portal exit
                             ball.state = BallState::Free;
 
                             // Mark block for damage
