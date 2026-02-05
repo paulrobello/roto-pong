@@ -862,10 +862,8 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                     }
                 }
 
-                // Record trail position (every 2nd tick for performance)
-                if state.time_ticks.is_multiple_of(2) {
-                    ball.record_trail();
-                }
+                // Record trail position every tick
+                ball.record_trail();
             }
 
             // Spawn collected pickups (deferred from block destruction)
