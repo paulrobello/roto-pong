@@ -677,10 +677,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         color = mix(color, core_color * (1.0 + part.life * 0.5), core_mask * part.life);
     }
     
-    // Pickups! 💊 Power-ups!
+    // Pickups! 💊 Power-ups with sexy particle effects!
     for (var i = 0u; i < globals.pickup_count && i < MAX_PICKUPS; i++) {
         let pickup = pickups[i];
-        let pickup_d = length(p - pickup.pos) - 12.0; // Pickup radius
+        let to_pickup = p - pickup.pos;
+        let pickup_dist = length(to_pickup);
+        let pickup_d = pickup_dist - 12.0; // Pickup radius
         
         // Pulsing effect based on TTL
         let pulse = 0.8 + sin(globals.time * 6.0 + f32(i) * 2.0) * 0.2;
@@ -692,9 +694,41 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         else if (pickup.kind == 3u) { pickup_color = vec3<f32>(0.3, 1.0, 0.3); }  // Widen - green
         else if (pickup.kind == 4u) { pickup_color = vec3<f32>(0.8, 0.3, 1.0); }  // Shield - purple
         
-        // Outer glow
-        let pickup_glow = exp(-max(pickup_d, 0.0) * 0.1) * pulse * 0.6;
+        // ✨ Orbiting particles (3 particles per pickup)
+        let orbit_radius = 20.0 + sin(globals.time * 2.0) * 3.0;
+        let orbit_speed = 3.0;
+        for (var j = 0u; j < 3u; j++) {
+            let angle_offset = f32(j) * 2.094395; // 2π/3 = 120 degrees apart
+            let particle_angle = globals.time * orbit_speed + angle_offset + f32(i) * 1.5;
+            let particle_pos = pickup.pos + vec2<f32>(cos(particle_angle), sin(particle_angle)) * orbit_radius;
+            let particle_d = length(p - particle_pos) - 3.0;
+            let particle_glow = exp(-max(particle_d, 0.0) * 0.4) * 0.8;
+            color += pickup_color * particle_glow;
+            // Bright core of particle
+            let particle_core = 1.0 - smoothstep(-aa, aa * 2.0, particle_d);
+            color = mix(color, pickup_color * 2.0, particle_core * 0.7);
+        }
+        
+        // ✨ Sparkle effect (4 sparkles that twinkle)
+        for (var k = 0u; k < 4u; k++) {
+            let sparkle_angle = f32(k) * 1.5708 + globals.time * 0.5; // 90 degrees apart, slow rotation
+            let sparkle_dist = 16.0 + sin(globals.time * 8.0 + f32(k) * 2.0) * 4.0;
+            let sparkle_pos = pickup.pos + vec2<f32>(cos(sparkle_angle), sin(sparkle_angle)) * sparkle_dist;
+            let sparkle_d = length(p - sparkle_pos);
+            let twinkle = max(0.0, sin(globals.time * 12.0 + f32(k) * 3.0 + f32(i) * 5.0));
+            let sparkle_intensity = exp(-sparkle_d * 0.5) * twinkle * 0.6;
+            color += vec3<f32>(1.0, 1.0, 1.0) * sparkle_intensity;
+        }
+        
+        // Outer glow (enhanced)
+        let pickup_glow = exp(-max(pickup_d, 0.0) * 0.08) * pulse * 0.7;
         color += pickup_color * pickup_glow;
+        
+        // Pulsing ring
+        let ring_radius = 18.0 + sin(globals.time * 4.0 + f32(i)) * 2.0;
+        let ring_d = abs(pickup_dist - ring_radius) - 1.0;
+        let ring_alpha = (1.0 - smoothstep(-aa, aa * 2.0, ring_d)) * pulse * 0.4;
+        color += pickup_color * ring_alpha;
         
         // Core
         let pickup_core = 1.0 - smoothstep(-aa, aa, pickup_d);
@@ -703,7 +737,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         // Inner bright spot
         let inner_d = pickup_d + 6.0;
         let inner_mask = 1.0 - smoothstep(-aa, aa, inner_d);
-        color = mix(color, vec3<f32>(1.0, 1.0, 1.0), inner_mask * 0.5);
+        color = mix(color, vec3<f32>(1.0, 1.0, 1.0), inner_mask * 0.6);
     }
     
     // Vignette
