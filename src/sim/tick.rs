@@ -20,6 +20,8 @@ pub struct TickInput {
     pub pause: bool,
     /// Skip to next wave (debug/testing)
     pub skip_wave: bool,
+    /// Idle/demo mode - AI plays the game
+    pub idle_mode: bool,
 }
 
 /// Advance the game state by one fixed timestep
@@ -51,6 +53,40 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
         GamePhase::Paused | GamePhase::GameOver => return,
         _ => {}
     }
+    
+    // Decay screen shake
+    state.screen_shake *= 0.9; // Fast decay
+    if state.screen_shake < 0.01 {
+        state.screen_shake = 0.0;
+    }
+
+    // Idle/demo mode - AI plays the game
+    let mut input = input.clone();
+    if input.idle_mode {
+        // Auto-launch ball in serve phase
+        if matches!(state.phase, GamePhase::Serve) {
+            input.launch = true;
+        }
+        
+        // Track the ball with some offset to avoid perfect loops
+        if let Some(ball) = state.balls.iter().find(|b| matches!(b.state, BallState::Free)) {
+            // Calculate angle to ball
+            let ball_angle = ball.pos.y.atan2(ball.pos.x);
+            
+            // Add oscillating offset based on time to create variety
+            let time_factor = state.time_ticks as f32 * 0.01;
+            let offset = (time_factor.sin() * 0.3) + (time_factor * 0.7).sin() * 0.15;
+            
+            // Predict where ball is heading (lead the target slightly)
+            let ball_future = ball.pos + ball.vel.normalize_or_zero() * 30.0;
+            let future_angle = ball_future.y.atan2(ball_future.x);
+            
+            // Blend between current ball angle and predicted, add offset
+            let target = future_angle + offset;
+            input.target_theta = Some(target);
+        }
+    }
+    let input = &input;
 
     // Debug: skip to next wave
     if input.skip_wave {
@@ -406,6 +442,11 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                         let destroyed_radius = block.arc.radius;
                         let destroyed_mid_angle = mid_angle;
                         let is_explosive = block.kind == super::state::BlockKind::Explosive;
+                        
+                        // Screen shake on explosions!
+                        if is_explosive {
+                            state.screen_shake = (state.screen_shake + 0.4).min(1.0);
+                        }
                         
                         // Collect neighbors to damage (for explosives) or wobble (for jello)
                         let mut explosion_victims = Vec::new();

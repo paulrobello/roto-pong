@@ -557,6 +557,10 @@ mod wasm_game {
                     " " | "Enter" => g.input.launch = true,
                     "Escape" => g.input.pause = true,
                     "+" | "=" => g.input.skip_wave = true, // Debug: skip to next wave
+                    "i" | "I" => {
+                        g.input.idle_mode = !g.input.idle_mode;
+                        log::info!("Idle mode: {}", g.input.idle_mode);
+                    }
                     _ => {}
                 }
             });

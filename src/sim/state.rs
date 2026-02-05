@@ -328,6 +328,9 @@ pub struct GameState {
     /// Visual particles (not gameplay-affecting)
     #[serde(skip)]
     pub particles: Vec<Particle>,
+    /// Screen shake intensity (0.0-1.0, decays over time)
+    #[serde(skip)]
+    pub screen_shake: f32,
     /// Next entity ID
     next_id: u32,
 }
@@ -351,6 +354,7 @@ impl GameState {
             pickups: Vec::new(),
             effects: ActiveEffects::default(),
             particles: Vec::new(),
+            screen_shake: 0.0,
             next_id: 1,
         };
 

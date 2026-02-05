@@ -22,7 +22,7 @@ struct Globals {
     _pad1: u32,              // offset 36
     camera_pos: vec2<f32>,   // offset 40 (8-byte aligned)
     camera_zoom: f32,        // offset 48
-    _pad2: u32,              // offset 52
+    screen_shake: f32,       // offset 52 - screen shake intensity (0-1)
 }
 
 struct Paddle {
@@ -239,6 +239,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     
     // Apply camera offset (add to center view on camera position)
     p = p + globals.camera_pos;
+    
+    // Screen shake effect
+    if (globals.screen_shake > 0.01) {
+        let shake_freq = 30.0;
+        let shake_amount = globals.screen_shake * 8.0; // Max 8 pixels offset
+        let shake_x = sin(globals.time * shake_freq) * shake_amount;
+        let shake_y = cos(globals.time * shake_freq * 1.3) * shake_amount;
+        p = p + vec2<f32>(shake_x, shake_y);
+    }
     
     // p_dist is the camera-transformed position for rendering
     let p_dist = p;

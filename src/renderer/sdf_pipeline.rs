@@ -35,7 +35,7 @@ struct Globals {
     _pad1: u32,             // offset 36 - align camera_pos to 8 bytes
     camera_pos: [f32; 2],   // offset 40 (8-byte aligned for WGSL vec2)
     camera_zoom: f32,       // offset 48
-    _pad2: u32,             // offset 52 - pad to 56 bytes (8-byte multiple)
+    screen_shake: f32,      // offset 52 - screen shake intensity (0-1)
 }
 
 #[repr(C)]
@@ -177,7 +177,7 @@ impl SdfRenderState {
                 _pad1: 0,
                 camera_pos: [0.0, 0.0],
                 camera_zoom: 1.0,
-                _pad2: 0,
+                screen_shake: 0.0,
             }),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
@@ -449,7 +449,7 @@ impl SdfRenderState {
             _pad1: 0,
             camera_pos: self.camera_pos,
             camera_zoom: self.camera_zoom,
-            _pad2: 0,
+            screen_shake: state.screen_shake,
         };
         self.queue.write_buffer(&self.globals_buffer, 0, bytemuck::bytes_of(&globals));
 
