@@ -33,6 +33,18 @@ pub enum BallState {
     Attached { offset: f32 },
     /// Ball is free-moving
     Free,
+    /// Ball is sliding through a portal block
+    Sliding {
+        block_id: u32,
+        theta: f32,          // Current position along arc
+        direction: f32,      // +1.0 CW, -1.0 CCW
+        entry_speed: f32,    // Speed when entered (for exit velocity)
+        arc_start: f32,      // Block's theta_start
+        arc_end: f32,        // Block's theta_end
+        radius: f32,         // Block's radius
+        total_traveled: f32, // Total radians traveled
+        max_travel: f32,     // Random exit point (0.5 to 2π)
+    },
     /// Ball is being consumed by black hole (spaghettification!)
     Dying { timer: f32, start_pos: (f32, f32) },
 }
@@ -86,7 +98,13 @@ impl Ball {
     /// Record current position to trail (call each tick when free)
     pub fn record_trail(&mut self) {
         let speed = self.vel.length();
-        self.trail.insert(0, TrailPoint { pos: self.pos, speed });
+        self.trail.insert(
+            0,
+            TrailPoint {
+                pos: self.pos,
+                speed,
+            },
+        );
         if self.trail.len() > TRAIL_LENGTH {
             self.trail.pop();
         }
@@ -186,7 +204,9 @@ pub enum BlockKind {
     Explosive,
     Invincible, // Cannot be destroyed, doesn't count for wave clear
     Prism,
-    Portal { pair_id: u32 },
+    Portal {
+        pair_id: u32,
+    },
     Jello, // Wobbly block that ripples when hit
     Pulse,
     Magnet,
@@ -221,14 +241,14 @@ impl Block {
             self.wobble = (self.wobble - dt * 2.0).max(0.0);
         }
     }
-    
+
     /// Trigger wobble (for Jello blocks when hit)
     pub fn trigger_wobble(&mut self) {
         if self.kind == BlockKind::Jello {
             self.wobble = 1.0;
         }
     }
-    
+
     /// Returns true if this block must be destroyed to clear the wave
     pub fn counts_for_clear(&self) -> bool {
         self.kind != BlockKind::Invincible

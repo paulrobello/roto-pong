@@ -22,7 +22,9 @@ struct Globals {
     _pad1: u32,              // offset 36
     camera_pos: vec2<f32>,   // offset 40 (8-byte aligned)
     camera_zoom: f32,        // offset 48
-    screen_shake: f32,       // offset 52 - screen shake intensity (0-1)
+    screen_shake: f32,       // offset 52
+    pickup_count: u32,       // offset 56
+    shield_active: u32,      // offset 60
 }
 
 struct Paddle {
@@ -36,6 +38,10 @@ struct Ball {
     pos: vec2<f32>,
     radius: f32,
     speed: f32,
+    sliding_block_id: u32,  // 0 = not sliding, else = portal block ID
+    _pad1: u32,
+    _pad2: u32,
+    _pad3: u32,
 }
 
 struct Block {
@@ -45,8 +51,8 @@ struct Block {
     thickness: f32,
     kind: u32,
     wobble: f32,
-    _pad2: f32,
-    _pad3: f32,
+    block_id: u32,
+    hp: u32,
 }
 
 struct TrailPoint {
@@ -65,12 +71,21 @@ struct Particle {
     _p3: u32,
 }
 
+const MAX_PICKUPS: u32 = 16u;
+
+struct Pickup {
+    pos: vec2<f32>,
+    kind: u32,      // 0=MultiBall, 1=Slow, 2=Piercing, 3=Widen, 4=Shield
+    ttl_ratio: f32, // 0-1, for pulsing effect
+}
+
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(0) @binding(1) var<uniform> paddle: Paddle;
 @group(0) @binding(2) var<storage, read> balls: array<Ball, MAX_BALLS>;
 @group(0) @binding(3) var<storage, read> blocks: array<Block, MAX_BLOCKS>;
 @group(0) @binding(4) var<storage, read> trail: array<TrailPoint, MAX_TRAIL>;
 @group(0) @binding(5) var<storage, read> particles: array<Particle, MAX_PARTICLES>;
+@group(0) @binding(6) var<storage, read> pickups: array<Pickup, MAX_PICKUPS>;
 
 // ============================================================================
 // SDF PRIMITIVES
@@ -318,6 +333,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var closest_block_radius = 0.0;
     var closest_block_thickness = 0.0;
     var closest_block_wobble = 0.0;
+    var closest_block_hp = 0u;
     let block_r = length(p_dist);
     let block_angle = atan2(p_dist.y, p_dist.x);
     
@@ -349,9 +365,30 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         
         var d = sdArc(p_dist, b.theta_start, b.theta_end, b.radius, b.thickness);
         
-        // Portal blocks: metaball reach toward nearby balls
+        // Portal blocks: check for sliding ball and show bulge
         if (b.kind == 4u) {
-            if (closest_ball_dist < 80.0) {
+            // Check if any ball is sliding through THIS block
+            var sliding_ball_pos = vec2<f32>(0.0, 0.0);
+            var has_slider = false;
+            for (var j = 0u; j < globals.ball_count && j < MAX_BALLS; j++) {
+                let ball = balls[j];
+                if (ball.sliding_block_id == b.block_id && ball.radius > 0.0) {
+                    sliding_ball_pos = ball.pos;
+                    has_slider = true;
+                    break;
+                }
+            }
+            
+            if (has_slider) {
+                // BULGE! Ball is inside this portal - show it sliding through
+                let ball_dist_from_pixel = length(p_dist - sliding_ball_pos);
+                let bulge_radius = 25.0; // Size of the bulge
+                let bulge_strength = 35.0; // How much it pushes out
+                // Smooth bulge that pushes the SDF outward where the ball is
+                let bulge = exp(-ball_dist_from_pixel * ball_dist_from_pixel / (bulge_radius * bulge_radius)) * bulge_strength;
+                d = d - bulge;
+            } else if (closest_ball_dist < 80.0) {
+                // Normal metaball reach toward nearby balls (when not sliding)
                 let reach_strength = 1.0 - closest_ball_dist / 80.0;
                 let to_ball_dist = length(closest_ball_pos - p_dist);
                 d = d - exp(-to_ball_dist * 0.05) * reach_strength * reach_strength * 25.0;
@@ -374,6 +411,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             closest_block_radius = b.radius;
             closest_block_thickness = b.thickness;
             closest_block_wobble = b.wobble;
+            closest_block_hp = b.hp;
         }
     }
     
@@ -396,11 +434,37 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             opacity = 0.45;
             emission = 0.15;
         } else if (closest_block_kind == 1u) { // Armored
+            // Base metallic look
             inner_color = vec3<f32>(0.4, 0.45, 0.5);
             outer_color = vec3<f32>(0.7, 0.75, 0.8);
             stroke_color = vec3<f32>(0.9, 0.92, 0.95);
             emission = 0.1;
             opacity = 0.85;
+            
+            // HP indicator: show dots/pips based on HP
+            // Each pip is a small bright spot along the arc
+            let hp = closest_block_hp;
+            if (hp > 1u) {
+                // Calculate position along block for pip display
+                let block_mid_angle = (blocks[u32(closest_block_idx)].theta_start + blocks[u32(closest_block_idx)].theta_end) / 2.0;
+                let block_arc_span = abs(blocks[u32(closest_block_idx)].theta_end - blocks[u32(closest_block_idx)].theta_start);
+                
+                // Draw HP pips (up to 12)
+                let max_pips = min(hp, 12u);
+                let pip_spacing = block_arc_span / f32(max_pips + 1u);
+                
+                for (var pip = 1u; pip <= max_pips; pip++) {
+                    let pip_angle = blocks[u32(closest_block_idx)].theta_start + pip_spacing * f32(pip);
+                    let pip_pos = vec2<f32>(cos(pip_angle), sin(pip_angle)) * closest_block_radius;
+                    let pip_dist = length(p_dist - pip_pos);
+                    
+                    // Small glowing pip
+                    if (pip_dist < 4.0) {
+                        let pip_glow = 1.0 - pip_dist / 4.0;
+                        inner_color += vec3<f32>(0.4, 0.5, 0.6) * pip_glow * pip_glow;
+                    }
+                }
+            }
         } else if (closest_block_kind == 2u) { // Explosive
             inner_color = vec3<f32>(1.0, 0.2, 0.0);
             outer_color = vec3<f32>(1.0, 0.6, 0.1);
@@ -478,6 +542,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let horizon_glow = exp(-max(horizon_d, 0.0) * 0.4) * 0.6 * pulse;
     color += vec3<f32>(1.0, 0.6, 0.2) * horizon_glow;
     
+    // Shield glow! Purple protective barrier around the black hole
+    if (globals.shield_active > 0u) {
+        let shield_radius = globals.black_hole_radius + 15.0;
+        let shield_d = abs(length(p) - shield_radius) - 3.0;
+        let shield_pulse = sin(globals.time * 4.0) * 0.3 + 0.7;
+        let shield_glow = exp(-max(shield_d, 0.0) * 0.2) * shield_pulse;
+        color += vec3<f32>(0.6, 0.2, 1.0) * shield_glow;
+        // Bright ring
+        let ring_mask = 1.0 - smoothstep(-aa, aa, shield_d);
+        color = mix(color, vec3<f32>(0.8, 0.4, 1.0), ring_mask * 0.8);
+    }
+    
     // Black hole core (pure black void)
     let hole_mask = 1.0 - smoothstep(-aa, aa * 1.5, hole_d);
     color = mix(color, vec3<f32>(0.0, 0.0, 0.0), hole_mask);
@@ -553,6 +629,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let ball = balls[i];
         if (ball.radius <= 0.0) { continue; }
         
+        // Ball still visible through translucent portal (bulge + ball = cool effect!)
         let d = sdCircle(p - ball.pos, ball.radius);
         let ball_color = velocityColor(ball.speed);
         
@@ -598,6 +675,35 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let core_mask = 1.0 - smoothstep(-aa, aa, core_d);
         let core_color = mix(part_color, vec3<f32>(1.0, 1.0, 1.0), 0.7);
         color = mix(color, core_color * (1.0 + part.life * 0.5), core_mask * part.life);
+    }
+    
+    // Pickups! 💊 Power-ups!
+    for (var i = 0u; i < globals.pickup_count && i < MAX_PICKUPS; i++) {
+        let pickup = pickups[i];
+        let pickup_d = length(p - pickup.pos) - 12.0; // Pickup radius
+        
+        // Pulsing effect based on TTL
+        let pulse = 0.8 + sin(globals.time * 6.0 + f32(i) * 2.0) * 0.2;
+        
+        // Color based on pickup type
+        var pickup_color = vec3<f32>(1.0, 1.0, 0.3);  // MultiBall - yellow
+        if (pickup.kind == 1u) { pickup_color = vec3<f32>(0.3, 0.7, 1.0); }  // Slow - blue
+        else if (pickup.kind == 2u) { pickup_color = vec3<f32>(1.0, 0.3, 0.3); }  // Piercing - red
+        else if (pickup.kind == 3u) { pickup_color = vec3<f32>(0.3, 1.0, 0.3); }  // Widen - green
+        else if (pickup.kind == 4u) { pickup_color = vec3<f32>(0.8, 0.3, 1.0); }  // Shield - purple
+        
+        // Outer glow
+        let pickup_glow = exp(-max(pickup_d, 0.0) * 0.1) * pulse * 0.6;
+        color += pickup_color * pickup_glow;
+        
+        // Core
+        let pickup_core = 1.0 - smoothstep(-aa, aa, pickup_d);
+        color = mix(color, pickup_color * 1.5, pickup_core * pulse);
+        
+        // Inner bright spot
+        let inner_d = pickup_d + 6.0;
+        let inner_mask = 1.0 - smoothstep(-aa, aa, inner_d);
+        color = mix(color, vec3<f32>(1.0, 1.0, 1.0), inner_mask * 0.5);
     }
     
     // Vignette

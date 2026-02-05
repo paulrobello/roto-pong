@@ -4,7 +4,7 @@ use glam::Vec2;
 use std::f32::consts::PI;
 
 use super::vertex::Vertex;
-use crate::consts::{BALL_MIN_SPEED, BALL_MAX_SPEED};
+use crate::consts::{BALL_MAX_SPEED, BALL_MIN_SPEED};
 use crate::sim::ArcSegment;
 use crate::sim::state::TrailPoint;
 
@@ -12,7 +12,7 @@ use crate::sim::state::TrailPoint;
 fn velocity_color(speed: f32, alpha: f32) -> [f32; 4] {
     // Normalize speed to 0-1 range
     let t = ((speed - BALL_MIN_SPEED) / (BALL_MAX_SPEED - BALL_MIN_SPEED)).clamp(0.0, 1.0);
-    
+
     // Color gradient: blue (slow) -> cyan -> green -> yellow -> orange -> red (fast)
     let (r, g, b) = if t < 0.25 {
         // Blue to cyan
@@ -31,7 +31,7 @@ fn velocity_color(speed: f32, alpha: f32) -> [f32; 4] {
         let u = (t - 0.75) / 0.25;
         (1.0, 0.8 - 0.5 * u, 0.2)
     };
-    
+
     [r, g, b, alpha]
 }
 
@@ -40,48 +40,48 @@ pub fn ball_trail(trail: &[TrailPoint], ball_radius: f32) -> Vec<Vertex> {
     if trail.len() < 2 {
         return Vec::new();
     }
-    
+
     let mut vertices = Vec::with_capacity(trail.len() * 6);
     let trail_len = trail.len() as f32;
-    
+
     for i in 0..trail.len() - 1 {
         let p1 = &trail[i];
         let p2 = &trail[i + 1];
-        
+
         // Fade alpha and size along trail
         let t1 = i as f32 / trail_len;
         let t2 = (i + 1) as f32 / trail_len;
-        
+
         let alpha1 = (1.0 - t1) * 0.8;
         let alpha2 = (1.0 - t2) * 0.8;
-        
+
         let width1 = ball_radius * (1.0 - t1 * 0.7);
         let width2 = ball_radius * (1.0 - t2 * 0.7);
-        
+
         let color1 = velocity_color(p1.speed, alpha1);
         let color2 = velocity_color(p2.speed, alpha2);
-        
+
         // Direction from p1 to p2
         let dir = (p2.pos - p1.pos).normalize_or_zero();
         // Perpendicular for width
         let perp = Vec2::new(-dir.y, dir.x);
-        
+
         // Quad corners
         let v1a = p1.pos + perp * width1;
         let v1b = p1.pos - perp * width1;
         let v2a = p2.pos + perp * width2;
         let v2b = p2.pos - perp * width2;
-        
+
         // Two triangles
         vertices.push(Vertex::new(v1a.x, v1a.y, color1));
         vertices.push(Vertex::new(v1b.x, v1b.y, color1));
         vertices.push(Vertex::new(v2a.x, v2a.y, color2));
-        
+
         vertices.push(Vertex::new(v2a.x, v2a.y, color2));
         vertices.push(Vertex::new(v1b.x, v1b.y, color1));
         vertices.push(Vertex::new(v2b.x, v2b.y, color2));
     }
-    
+
     vertices
 }
 

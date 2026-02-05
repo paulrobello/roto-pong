@@ -3,7 +3,7 @@
 //! Uses signed distance fields for accurate collision detection and response.
 
 use glam::Vec2;
-use std::f32::consts::{PI, TAU};
+use std::f32::consts::TAU;
 
 /// Signed distance to a circle
 #[inline]
@@ -16,22 +16,26 @@ pub fn sd_circle(p: Vec2, center: Vec2, radius: f32) -> f32 {
 pub fn sd_arc(p: Vec2, theta_start: f32, theta_end: f32, radius: f32, thickness: f32) -> f32 {
     let r = p.length();
     let angle = p.y.atan2(p.x);
-    
+
     // Normalize angle difference
     let mut angle_diff = angle - theta_start;
     angle_diff = angle_diff - (angle_diff / TAU).round() * TAU;
-    
+
     // Arc span
     let mut span = theta_end - theta_start;
     span = span - (span / TAU).round() * TAU;
-    if span <= 0.0 { span += TAU; }
-    
+    if span <= 0.0 {
+        span += TAU;
+    }
+
     // Normalize to positive
-    if angle_diff < 0.0 { angle_diff += TAU; }
-    
+    if angle_diff < 0.0 {
+        angle_diff += TAU;
+    }
+
     let in_arc = angle_diff <= span;
     let half_thick = thickness * 0.5;
-    
+
     if in_arc {
         // Distance to inner/outer radius
         (r - radius).abs() - half_thick
@@ -52,7 +56,7 @@ pub fn sd_arena_wall(p: Vec2, arena_radius: f32) -> f32 {
 }
 
 /// Compute SDF gradient (surface normal) using central differences
-pub fn sdf_gradient<F>(p: Vec2, sdf: F) -> Vec2 
+pub fn sdf_gradient<F>(p: Vec2, sdf: F) -> Vec2
 where
     F: Fn(Vec2) -> f32,
 {
@@ -88,7 +92,7 @@ where
     F: Fn(Vec2) -> f32,
 {
     let dist = sdf(ball_pos);
-    
+
     if dist < ball_radius {
         let normal = sdf_gradient(ball_pos, &sdf);
         SdfCollision {
@@ -126,27 +130,27 @@ where
         return None;
     }
     let dir_norm = dir / total_dist;
-    
+
     let mut t = 0.0;
-    
+
     for _ in 0..max_steps {
         let p = start + dir_norm * t;
         let d = sdf(p);
-        
+
         if d < ball_radius {
             // Hit! Compute normal
             let normal = sdf_gradient(p, &sdf);
             return Some((t / total_dist, normal));
         }
-        
+
         // Step by distance to surface (sphere tracing)
         let step = (d - ball_radius * 0.5).max(0.5);
         t += step;
-        
+
         if t >= total_dist {
             break;
         }
     }
-    
+
     None
 }

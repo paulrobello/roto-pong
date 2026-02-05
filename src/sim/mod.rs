@@ -14,6 +14,6 @@ pub mod tick;
 
 pub use arc::ArcSegment;
 pub use collision::{CollisionResult, ball_arc_collision};
-pub use sdf::{sd_arc, sd_circle, sd_arena_wall, check_sdf_collision, raymarch_collision, reflect};
-pub use state::{Ball, BallState, Block, BlockKind, GamePhase, GameState, Paddle};
+pub use sdf::{check_sdf_collision, raymarch_collision, reflect, sd_arc, sd_arena_wall, sd_circle};
+pub use state::{Ball, BallState, Block, BlockKind, GamePhase, GameState, Paddle, PickupKind};
 pub use tick::{TickInput, generate_wave, tick};

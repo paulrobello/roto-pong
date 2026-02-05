@@ -114,11 +114,11 @@ mod wasm_game {
                 self.input.pause = false;
                 self.input.skip_wave = false;
             }
-            
+
             // Track frame times for FPS
             self.frame_times[self.frame_index] = time;
             self.frame_index = (self.frame_index + 1) % 60;
-            
+
             // Calculate FPS from oldest to newest frame
             let oldest_idx = self.frame_index;
             let oldest_time = self.frame_times[oldest_idx];
@@ -128,7 +128,7 @@ mod wasm_game {
                     self.fps = (60000.0 / elapsed).round() as u32;
                 }
             }
-            
+
             // Auto-save on phase transitions
             use roto_pong::sim::GamePhase;
             let current_phase = self.state.phase;
@@ -160,27 +160,43 @@ mod wasm_game {
         /// Update HUD elements in DOM
         fn update_hud(&self) {
             use roto_pong::sim::GamePhase;
-            
+
             let window = web_sys::window().unwrap();
             let document = window.document().unwrap();
 
             // Update score
-            if let Some(el) = document.query_selector("#hud-score .hud-value").ok().flatten() {
+            if let Some(el) = document
+                .query_selector("#hud-score .hud-value")
+                .ok()
+                .flatten()
+            {
                 el.set_text_content(Some(&self.state.score.to_string()));
             }
 
             // Update lives
-            if let Some(el) = document.query_selector("#hud-lives .hud-value").ok().flatten() {
+            if let Some(el) = document
+                .query_selector("#hud-lives .hud-value")
+                .ok()
+                .flatten()
+            {
                 el.set_text_content(Some(&self.state.lives.to_string()));
             }
 
             // Update wave
-            if let Some(el) = document.query_selector("#hud-wave .hud-value").ok().flatten() {
+            if let Some(el) = document
+                .query_selector("#hud-wave .hud-value")
+                .ok()
+                .flatten()
+            {
                 el.set_text_content(Some(&(self.state.wave_index + 1).to_string()));
             }
 
             // Update FPS
-            if let Some(el) = document.query_selector("#hud-fps .hud-value").ok().flatten() {
+            if let Some(el) = document
+                .query_selector("#hud-fps .hud-value")
+                .ok()
+                .flatten()
+            {
                 el.set_text_content(Some(&self.fps.to_string()));
             }
 
@@ -188,9 +204,13 @@ mod wasm_game {
             if let Some(el) = document.get_element_by_id("hud-combo") {
                 if self.state.combo > 1 {
                     let _ = el.set_attribute("class", "hud-item");
-                    
+
                     // Update combo value
-                    if let Some(val) = document.query_selector("#hud-combo .hud-value").ok().flatten() {
+                    if let Some(val) = document
+                        .query_selector("#hud-combo .hud-value")
+                        .ok()
+                        .flatten()
+                    {
                         let old_text = val.text_content().unwrap_or_default();
                         let new_text = self.state.combo.to_string();
                         if old_text != new_text {
@@ -199,14 +219,66 @@ mod wasm_game {
                             let _ = el.set_attribute("class", "hud-item pop");
                         }
                     }
-                    
+
                     // Update multiplier (1.1x at combo 2, up to 3.0x)
-                    if let Some(mult) = document.query_selector("#hud-combo .multiplier").ok().flatten() {
+                    if let Some(mult) = document
+                        .query_selector("#hud-combo .multiplier")
+                        .ok()
+                        .flatten()
+                    {
                         let multiplier = (1.0 + (self.state.combo - 1) as f32 * 0.1).min(3.0);
                         mult.set_text_content(Some(&format!("x{:.1}", multiplier)));
                     }
                 } else {
                     let _ = el.set_attribute("class", "hud-item hidden");
+                }
+            }
+
+            // Update power-up indicators
+            // Slow (5 sec = 600 ticks)
+            if let Some(el) = document.get_element_by_id("powerup-slow") {
+                if self.state.effects.slow_ticks > 0 {
+                    let _ = el.set_attribute("class", "powerup-icon active");
+                    if let Some(bar) = document.get_element_by_id("powerup-slow-bar") {
+                        let pct = (self.state.effects.slow_ticks as f32 / 600.0 * 100.0).min(100.0);
+                        let _ = bar.set_attribute("style", &format!("width: {}%", pct));
+                    }
+                } else {
+                    let _ = el.set_attribute("class", "powerup-icon");
+                }
+            }
+            // Piercing (4 sec = 480 ticks)
+            if let Some(el) = document.get_element_by_id("powerup-piercing") {
+                if self.state.effects.piercing_ticks > 0 {
+                    let _ = el.set_attribute("class", "powerup-icon active");
+                    if let Some(bar) = document.get_element_by_id("powerup-piercing-bar") {
+                        let pct =
+                            (self.state.effects.piercing_ticks as f32 / 480.0 * 100.0).min(100.0);
+                        let _ = bar.set_attribute("style", &format!("width: {}%", pct));
+                    }
+                } else {
+                    let _ = el.set_attribute("class", "powerup-icon");
+                }
+            }
+            // Widen (6 sec = 720 ticks)
+            if let Some(el) = document.get_element_by_id("powerup-widen") {
+                if self.state.effects.widen_ticks > 0 {
+                    let _ = el.set_attribute("class", "powerup-icon active");
+                    if let Some(bar) = document.get_element_by_id("powerup-widen-bar") {
+                        let pct =
+                            (self.state.effects.widen_ticks as f32 / 720.0 * 100.0).min(100.0);
+                        let _ = bar.set_attribute("style", &format!("width: {}%", pct));
+                    }
+                } else {
+                    let _ = el.set_attribute("class", "powerup-icon");
+                }
+            }
+            // Shield (until used - no timer)
+            if let Some(el) = document.get_element_by_id("powerup-shield") {
+                if self.state.effects.shield_active {
+                    let _ = el.set_attribute("class", "powerup-icon active");
+                } else {
+                    let _ = el.set_attribute("class", "powerup-icon");
                 }
             }
 
@@ -246,7 +318,7 @@ mod wasm_game {
                 }
             }
         }
-        
+
         /// Save game state to LocalStorage
         fn save_game(&self) {
             if let Ok(json) = serde_json::to_string(&self.state) {
@@ -266,7 +338,7 @@ mod wasm_game {
             self.accumulator = 0.0;
             self.input = TickInput::default();
         }
-        
+
         /// Load game state from saved data
         fn load_state(&mut self, state: GameState) {
             self.state = state;
@@ -274,14 +346,14 @@ mod wasm_game {
             self.input = TickInput::default();
         }
     }
-    
+
     /// Load saved game from LocalStorage
     fn load_saved_game() -> Option<GameState> {
         let storage = web_sys::window()?.local_storage().ok()??;
         let json = storage.get_item("roto_pong_save").ok()??;
         serde_json::from_str(&json).ok()
     }
-    
+
     /// Clear saved game from LocalStorage
     fn clear_saved_game() {
         if let Some(storage) = web_sys::window()
@@ -351,15 +423,14 @@ mod wasm_game {
 
         log::info!("Using adapter: {:?}", adapter.get_info().name);
 
-        let mut render_state =
-            SdfRenderState::new(surface, &adapter, width, height).await;
+        let mut render_state = SdfRenderState::new(surface, &adapter, width, height).await;
         render_state.set_start_time(js_sys::Date::now());
         game.borrow_mut().render_state = Some(render_state);
 
         // Check for saved game
         let saved_game = load_saved_game();
         let has_save = saved_game.is_some();
-        
+
         if let Some(ref save) = saved_game {
             // Show continue prompt
             if let Some(el) = document.get_element_by_id("continue-prompt") {
@@ -380,16 +451,16 @@ mod wasm_game {
 
         // Set up input handlers
         setup_input_handlers(&canvas, game.clone());
-        
+
         // Set up restart button
         setup_restart_button(game.clone());
-        
+
         // Set up pause menu buttons
         setup_pause_menu(game.clone());
-        
+
         // Set up continue prompt buttons
         setup_continue_prompt(game.clone(), saved_game);
-        
+
         // Set up auto-pause on visibility change
         setup_auto_pause(game.clone());
 
@@ -427,7 +498,7 @@ mod wasm_game {
             );
             closure.forget();
         }
-        
+
         // Visibility change - might cause lock release
         {
             let document = web_sys::window().unwrap().document().unwrap();
@@ -460,7 +531,7 @@ mod wasm_game {
             let canvas_clone = canvas.clone();
             let closure = Closure::<dyn FnMut(_)>::new(move |event: MouseEvent| {
                 let mut g = game.borrow_mut();
-                
+
                 if g.pointer_locked {
                     // Pointer locked: use relative movement
                     let sensitivity = 0.075; // Radians per pixel
@@ -488,7 +559,7 @@ mod wasm_game {
             let closure = Closure::<dyn FnMut(_)>::new(move |_event: MouseEvent| {
                 let mut g = game.borrow_mut();
                 g.input.launch = true;
-                
+
                 // Request pointer lock if not already locked
                 if !g.pointer_locked {
                     drop(g); // Release borrow before async call
@@ -608,20 +679,20 @@ mod wasm_game {
                 let seed = js_sys::Date::now() as u64;
                 let mut g = game.borrow_mut();
                 g.restart(seed);
-                
+
                 // Regenerate initial wave
                 roto_pong::sim::generate_wave(&mut g.state);
-                
+
                 // Clear any saved game
                 clear_saved_game();
-                
+
                 log::info!("Game restarted with seed: {}", seed);
             });
             let _ = btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
             closure.forget();
         }
     }
-    
+
     fn setup_pause_menu(game: Rc<RefCell<Game>>) {
         let window = web_sys::window().unwrap();
         let document = window.document().unwrap();
@@ -635,7 +706,7 @@ mod wasm_game {
             let _ = btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
             closure.forget();
         }
-        
+
         // Save & Quit button
         if let Some(btn) = document.get_element_by_id("save-quit-btn") {
             let closure = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
@@ -650,7 +721,7 @@ mod wasm_game {
             closure.forget();
         }
     }
-    
+
     fn setup_continue_prompt(game: Rc<RefCell<Game>>, saved_game: Option<GameState>) {
         let window = web_sys::window().unwrap();
         let document = window.document().unwrap();
@@ -676,18 +747,18 @@ mod wasm_game {
             let _ = btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
             closure.forget();
         }
-        
+
         // New Game button
         if let Some(btn) = document.get_element_by_id("new-game-btn") {
             let closure = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
                 // Clear saved game
                 clear_saved_game();
-                
+
                 // Start fresh
                 let seed = js_sys::Date::now() as u64;
                 game.borrow_mut().restart(seed);
                 roto_pong::sim::generate_wave(&mut game.borrow_mut().state);
-                
+
                 // Hide continue prompt, show HUD
                 let document = web_sys::window().unwrap().document().unwrap();
                 if let Some(el) = document.get_element_by_id("continue-prompt") {
@@ -696,17 +767,17 @@ mod wasm_game {
                 if let Some(el) = document.get_element_by_id("hud") {
                     let _ = el.set_attribute("class", "");
                 }
-                
+
                 log::info!("Started new game with seed: {}", seed);
             });
             let _ = btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
             closure.forget();
         }
     }
-    
+
     fn setup_auto_pause(game: Rc<RefCell<Game>>) {
         use roto_pong::sim::GamePhase;
-        
+
         let window = web_sys::window().unwrap();
         let document = window.document().unwrap();
 
@@ -740,7 +811,8 @@ mod wasm_game {
                     log::info!("Auto-paused (window blur)");
                 }
             });
-            let _ = window.add_event_listener_with_callback("blur", closure.as_ref().unchecked_ref());
+            let _ =
+                window.add_event_listener_with_callback("blur", closure.as_ref().unchecked_ref());
             closure.forget();
         }
     }
