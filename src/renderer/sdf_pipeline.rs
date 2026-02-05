@@ -11,7 +11,7 @@ use crate::sim::GameState;
 /// Maximum number of balls supported
 const MAX_BALLS: usize = 8;
 /// Maximum number of trail points
-const MAX_TRAIL: usize = 32;
+const MAX_TRAIL: usize = 256; // 8 balls * 32 points each
 /// Maximum number of blocks
 const MAX_BLOCKS: usize = 256;
 /// Maximum number of particles
