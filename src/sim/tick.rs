@@ -444,6 +444,31 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
 
                             // Set cooldown to prevent immediate re-collision
                             ball.paddle_cooldown = 8;
+                            
+                            // 🔥 Paddle hit sparks!
+                            let spark_count = 8;
+                            for j in 0..spark_count {
+                                let hash = (state.time_ticks as u32)
+                                    .wrapping_mul(2654435761)
+                                    .wrapping_add(j * 7919);
+                                let rand1 = (hash % 1000) as f32 / 1000.0;
+                                let rand2 = ((hash >> 10) % 1000) as f32 / 1000.0;
+                                let rand3 = ((hash >> 20) % 1000) as f32 / 1000.0;
+                                
+                                let angle = std::f32::consts::TAU * (j as f32 / spark_count as f32)
+                                    + rand1 * 0.3;
+                                let spark_speed = 80.0 + rand2 * 120.0;
+                                let outward = Vec2::new(angle.cos(), angle.sin());
+                                state.particles.push(super::state::Particle {
+                                    pos: ball.pos,
+                                    vel: outward * spark_speed + ball.vel * 0.3,
+                                    color: 99, // Paddle sparks - white/cyan
+                                    life: 0.4 + rand3 * 0.3,
+                                    size: 3.0 + rand1 * 2.0,
+                                });
+                            }
+                            state.screen_shake = (state.screen_shake + 0.1).min(1.0);
+                            
                             continue; // Skip normal movement for this ball
                         }
                     }
