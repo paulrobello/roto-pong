@@ -445,26 +445,28 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                             // Set cooldown to prevent immediate re-collision
                             ball.paddle_cooldown = 8;
                             
-                            // 🔥 Paddle hit sparks!
+                            // 🔥 Paddle hit sparks - emit from contact point, spread around normal
                             let spark_count = 8;
+                            let normal_angle = normal.y.atan2(normal.x);
+                            let spread = std::f32::consts::FRAC_PI_2; // 90 degree cone (±45°)
                             for j in 0..spark_count {
                                 let hash = (state.time_ticks as u32)
                                     .wrapping_mul(2654435761)
                                     .wrapping_add(j * 7919);
-                                let rand1 = (hash % 1000) as f32 / 1000.0;
+                                let rand1 = (hash % 1000) as f32 / 1000.0 - 0.5; // -0.5 to 0.5
                                 let rand2 = ((hash >> 10) % 1000) as f32 / 1000.0;
                                 let rand3 = ((hash >> 20) % 1000) as f32 / 1000.0;
                                 
-                                let angle = std::f32::consts::TAU * (j as f32 / spark_count as f32)
-                                    + rand1 * 0.3;
-                                let spark_speed = 80.0 + rand2 * 120.0;
-                                let outward = Vec2::new(angle.cos(), angle.sin());
+                                // Spread sparks in cone around normal
+                                let spark_angle = normal_angle + rand1 * spread;
+                                let spark_speed = 100.0 + rand2 * 150.0;
+                                let spark_dir = Vec2::new(spark_angle.cos(), spark_angle.sin());
                                 state.particles.push(super::state::Particle {
                                     pos: ball.pos,
-                                    vel: outward * spark_speed + ball.vel * 0.3,
+                                    vel: spark_dir * spark_speed,
                                     color: 99, // Paddle sparks - white/cyan
-                                    life: 0.4 + rand3 * 0.3,
-                                    size: 3.0 + rand1 * 2.0,
+                                    life: 0.3 + rand3 * 0.25,
+                                    size: 2.5 + rand2 * 2.0,
                                 });
                             }
                             state.screen_shake = (state.screen_shake + 0.1).min(1.0);
@@ -513,27 +515,27 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
 
                             ball.paddle_cooldown = 8;
                             
-                            // 🔥 Paddle hit sparks!
+                            // 🔥 Paddle hit sparks - emit from contact, spread around normal
                             let spark_count = 8;
+                            let normal_angle = paddle_result.normal.y.atan2(paddle_result.normal.x);
+                            let spread = std::f32::consts::FRAC_PI_2; // 90 degree cone
                             for j in 0..spark_count {
-                                // Hash for visual randomness (particles don't affect gameplay)
                                 let hash = (state.time_ticks as u32)
                                     .wrapping_mul(2654435761)
                                     .wrapping_add(j * 7919);
-                                let rand1 = (hash % 1000) as f32 / 1000.0;
+                                let rand1 = (hash % 1000) as f32 / 1000.0 - 0.5;
                                 let rand2 = ((hash >> 10) % 1000) as f32 / 1000.0;
                                 let rand3 = ((hash >> 20) % 1000) as f32 / 1000.0;
                                 
-                                let angle = std::f32::consts::TAU * (j as f32 / spark_count as f32)
-                                    + rand1 * 0.3;
-                                let spark_speed = 80.0 + rand2 * 120.0;
-                                let outward = Vec2::new(angle.cos(), angle.sin());
+                                let spark_angle = normal_angle + rand1 * spread;
+                                let spark_speed = 100.0 + rand2 * 150.0;
+                                let spark_dir = Vec2::new(spark_angle.cos(), spark_angle.sin());
                                 state.particles.push(super::state::Particle {
                                     pos: ball.pos,
-                                    vel: outward * spark_speed + ball.vel * 0.3,
-                                    color: 99, // Special color code for paddle sparks (white/cyan)
-                                    life: 0.4 + rand3 * 0.3,
-                                    size: 3.0 + rand1 * 2.0,
+                                    vel: spark_dir * spark_speed,
+                                    color: 99, // Paddle sparks - white/cyan
+                                    life: 0.3 + rand3 * 0.25,
+                                    size: 2.5 + rand2 * 2.0,
                                 });
                             }
                             state.screen_shake = (state.screen_shake + 0.1).min(1.0);
