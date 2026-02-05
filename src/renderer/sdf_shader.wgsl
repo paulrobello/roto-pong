@@ -7,7 +7,7 @@
 
 const MAX_BALLS: u32 = 8u;
 const MAX_BLOCKS: u32 = 256u;
-const MAX_TRAIL: u32 = 32u;
+const MAX_TRAIL: u32 = 256u;
 const MAX_PARTICLES: u32 = 256u;
 
 struct Globals {
