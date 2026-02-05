@@ -6,6 +6,7 @@ use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
 use crate::consts::*;
+use crate::settings::Settings;
 use crate::sim::GameState;
 
 /// Maximum number of balls supported
@@ -432,72 +433,71 @@ impl SdfRenderState {
     }
 
     /// Update GPU buffers from game state and render
-    pub fn render(&mut self, state: &GameState, time: f64) -> Result<(), wgpu::SurfaceError> {
+    pub fn render(
+        &mut self,
+        state: &GameState,
+        settings: &Settings,
+        time: f64,
+    ) -> Result<(), wgpu::SurfaceError> {
         // time is ms since page load from requestAnimationFrame, convert to seconds
         let elapsed = (time / 1000.0) as f32;
 
         let ball_count = state.balls.len().min(MAX_BALLS) as u32;
         let block_count = state.blocks.len().min(MAX_BLOCKS) as u32;
-        let trail_count = state
-            .balls
-            .iter()
-            .map(|b| b.trail.len())
-            .sum::<usize>()
-            .min(MAX_TRAIL) as u32;
-        let particle_count = state.particles.len().min(MAX_PARTICLES) as u32;
-        let pickup_count = state.pickups.len().min(MAX_PICKUPS) as u32;
 
-        // Camera follow - enabled when arena is larger than base viewport
-        // Base viewport shows ~440px radius (ARENA_OUTER_RADIUS * 1.1)
-        // Enable camera when arena extends beyond this
-        let base_viewport = 440.0;
-        let camera_enabled = ARENA_OUTER_RADIUS > base_viewport;
-
-        if camera_enabled {
-            let dt = 1.0 / 60.0;
-            let pos_smooth = 3.0;
-            let zoom_smooth = 1.0;
-
-            // Find active ball position
-            let target_pos = state
+        // Apply settings for trails
+        let trail_count = if settings.trails {
+            let quality_factor = settings.quality.trail_quality();
+            let raw_count = state
                 .balls
                 .iter()
-                .find(|b| {
-                    matches!(
-                        b.state,
-                        crate::sim::BallState::Free | crate::sim::BallState::Dying { .. }
-                    )
-                })
-                .map(|b| [b.pos.x, b.pos.y])
-                .unwrap_or([0.0, 0.0]);
-
-            // Smooth interpolation toward ball
-            self.camera_pos[0] += (target_pos[0] - self.camera_pos[0]) * pos_smooth * dt;
-            self.camera_pos[1] += (target_pos[1] - self.camera_pos[1]) * pos_smooth * dt;
-
-            // Zoom to keep both ball and black hole visible with 20% padding
-            let viewport_base = base_viewport * 0.8;
-            let camera_dist = (self.camera_pos[0].powi(2) + self.camera_pos[1].powi(2)).sqrt();
-
-            let target_zoom = if camera_dist <= viewport_base {
-                1.0
-            } else {
-                camera_dist / viewport_base
-            };
-
-            self.camera_zoom += (target_zoom - self.camera_zoom) * zoom_smooth * dt;
-            self.camera_zoom = self.camera_zoom.clamp(1.0, 2.0);
+                .map(|b| b.trail.len())
+                .sum::<usize>();
+            ((raw_count as f32 * quality_factor) as usize).min(MAX_TRAIL) as u32
         } else {
-            // Arena fits on screen - keep centered
-            self.camera_pos = [0.0, 0.0];
-            self.camera_zoom = 1.0;
-        }
+            0
+        };
+
+        // Apply settings for particles
+        let max_particles = settings.max_particles().min(MAX_PARTICLES);
+        let particle_count = state.particles.len().min(max_particles) as u32;
+        let pickup_count = state.pickups.len().min(MAX_PICKUPS) as u32;
+
+        // Camera zoom - adjusts to fit larger arenas
+        // Base viewport shows arena radius * 1.1 (440px at base 400)
+        // When arena grows, zoom out to keep everything visible
+        let base_arena = 400.0;
+        let base_viewport = base_arena * 1.1;
+        
+        // Calculate target zoom to fit current arena
+        let target_zoom = state.arena_radius * 1.1 / base_viewport;
+        
+        // Smooth zoom transitions
+        let dt = 1.0 / 60.0;
+        let zoom_smooth = 2.0;
+        self.camera_zoom += (target_zoom - self.camera_zoom) * zoom_smooth * dt;
+        self.camera_zoom = self.camera_zoom.clamp(1.0, 2.0);
+        
+        // Keep camera centered (arena is circular, no need to follow ball)
+        self.camera_pos = [0.0, 0.0];
+
+        // Apply settings to visual effects
+        let effective_shake = if settings.effective_screen_shake() {
+            state.screen_shake
+        } else {
+            0.0
+        };
+        let effective_flash = if settings.effective_wave_flash() {
+            state.wave_flash
+        } else {
+            0.0
+        };
 
         // Update globals
         let globals = Globals {
             resolution: [self.size.0 as f32, self.size.1 as f32],
             time: elapsed,
-            arena_radius: ARENA_OUTER_RADIUS,
+            arena_radius: state.arena_radius,
             black_hole_radius: BLACK_HOLE_RADIUS,
             ball_count,
             block_count,
@@ -506,10 +506,10 @@ impl SdfRenderState {
             _pad1: 0,
             camera_pos: self.camera_pos,
             camera_zoom: self.camera_zoom,
-            screen_shake: state.screen_shake,
+            screen_shake: effective_shake,
             pickup_count,
             shield_active: if state.effects.shield_active { 1 } else { 0 },
-            wave_flash: state.wave_flash,
+            wave_flash: effective_flash,
             _pad2: [0; 3],
         };
         self.queue

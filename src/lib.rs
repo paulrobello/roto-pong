@@ -7,12 +7,17 @@
 //! - `persistence`: Save/load with integrity verification
 //! - `tuning`: Data-driven game balance
 
+pub mod highscores;
 pub mod persistence;
 pub mod platform;
 pub mod renderer;
+pub mod settings;
 pub mod sim;
 pub mod tuning;
 pub mod ui;
+
+pub use highscores::HighScores;
+pub use settings::{QualityPreset, Settings};
 
 use glam::Vec2;
 

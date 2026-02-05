@@ -268,6 +268,47 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         p = p + vec2<f32>(shake_x, shake_y);
     }
     
+    // Heat distortion near explosive blocks
+    var heat_distort = vec2<f32>(0.0, 0.0);
+    for (var i = 0u; i < globals.block_count; i = i + 1u) {
+        let block = blocks[i];
+        // Only explosive blocks (kind == 2)
+        if (block.kind == 2u) {
+            // Calculate block center position
+            let block_theta = (block.theta_start + block.theta_end) * 0.5;
+            let block_center = vec2<f32>(cos(block_theta), sin(block_theta)) * block.radius;
+            
+            // Distance from this pixel to block center
+            let to_block = p - block_center;
+            let dist = length(to_block);
+            
+            // Heat effect radius - larger than the block itself
+            let heat_radius = block.thickness * 3.0;
+            
+            if (dist < heat_radius) {
+                // Falloff from center
+                let falloff = 1.0 - (dist / heat_radius);
+                let intensity = falloff * falloff * 6.0; // Quadratic falloff, max 6px distortion
+                
+                // Wavy distortion - multiple frequencies for realism
+                let wave1 = sin(p.y * 0.15 + globals.time * 4.0) * cos(p.x * 0.12 + globals.time * 3.0);
+                let wave2 = sin(p.x * 0.2 + globals.time * 5.5) * cos(p.y * 0.18 + globals.time * 2.5);
+                let wave3 = sin((p.x + p.y) * 0.1 + globals.time * 3.5);
+                
+                // Combine waves with different weights
+                let distort_x = (wave1 * 0.5 + wave2 * 0.3 + wave3 * 0.2) * intensity;
+                let distort_y = (wave2 * 0.5 + wave1 * 0.3 - wave3 * 0.2) * intensity;
+                
+                // Rising effect - distortion moves upward (toward outer arena)
+                let rise_dir = normalize(block_center);
+                let rise = sin(dist * 0.1 - globals.time * 2.0) * intensity * 0.5;
+                
+                heat_distort = heat_distort + vec2<f32>(distort_x, distort_y) + rise_dir * rise;
+            }
+        }
+    }
+    p = p + heat_distort;
+    
     // p_dist is the camera-transformed position for rendering
     let p_dist = p;
     

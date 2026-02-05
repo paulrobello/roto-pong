@@ -319,6 +319,15 @@ impl RngState {
     }
 }
 
+/// Base arena radius
+pub const BASE_ARENA_RADIUS: f32 = 400.0;
+/// Maximum arena radius (grows with waves)
+pub const MAX_ARENA_RADIUS: f32 = 650.0;
+/// Arena growth per wave
+pub const ARENA_GROWTH_PER_WAVE: f32 = 8.0;
+/// Wave at which arena starts growing
+pub const ARENA_GROWTH_START_WAVE: u32 = 5;
+
 /// Complete game state (deterministic, serializable)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameState {
@@ -340,6 +349,9 @@ pub struct GameState {
     pub phase: GamePhase,
     /// Breather timer (ticks remaining)
     pub breather_ticks: u32,
+    /// Current arena outer radius (grows with waves)
+    #[serde(default = "default_arena_radius")]
+    pub arena_radius: f32,
     /// Player paddle
     pub paddle: Paddle,
     /// Active balls (sorted by id for determinism)
@@ -363,6 +375,10 @@ pub struct GameState {
     next_id: u32,
 }
 
+fn default_arena_radius() -> f32 {
+    BASE_ARENA_RADIUS
+}
+
 impl GameState {
     /// Create a new game state with the given seed
     pub fn new(seed: u64) -> Self {
@@ -376,6 +392,7 @@ impl GameState {
             time_ticks: 0,
             phase: GamePhase::Serve,
             breather_ticks: 0,
+            arena_radius: BASE_ARENA_RADIUS,
             paddle: Paddle::default(),
             balls: Vec::new(),
             blocks: Vec::new(),

@@ -280,19 +280,165 @@
         #save-quit-btn:hover {
             background: #ef4444;
         }
+        #settings-btn {
+            background: #60a5fa;
+        }
+        #settings-btn:hover {
+            background: #3b82f6;
+        }
         .pause-hint {
             color: #666;
             font-size: 0.9rem;
         }
         
-        /* Continue prompt */
-        #continue-prompt {
+        /* Settings modal */
+        #settings-modal {
             position: absolute;
             top: 0;
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0, 0, 0, 0.9);
+            background: rgba(0, 0, 0, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: system-ui, sans-serif;
+            color: #fff;
+            z-index: 35;
+            overflow-y: auto;
+        }
+        #settings-modal.hidden { display: none; }
+        #settings-modal h1 {
+            font-size: 2.5rem;
+            color: #60a5fa;
+            margin-bottom: 1.5rem;
+            text-shadow: 0 0 30px rgba(96, 165, 250, 0.5);
+        }
+        .settings-content {
+            background: rgba(30, 41, 59, 0.8);
+            border-radius: 12px;
+            padding: 1.5rem 2rem;
+            max-width: 450px;
+            width: 90%;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+        .settings-section {
+            margin-bottom: 1.5rem;
+        }
+        .settings-section:last-child {
+            margin-bottom: 0;
+        }
+        .settings-section h3 {
+            font-size: 1rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.75rem;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 0.5rem;
+        }
+        .setting-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.6rem 0;
+        }
+        .setting-label {
+            font-size: 1rem;
+        }
+        .setting-control {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        /* Toggle switch */
+        .toggle {
+            position: relative;
+            width: 48px;
+            height: 26px;
+            background: #475569;
+            border-radius: 13px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .toggle.active {
+            background: #4ade80;
+        }
+        .toggle-knob {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 20px;
+            height: 20px;
+            background: #fff;
+            border-radius: 50%;
+            transition: transform 0.2s;
+        }
+        .toggle.active .toggle-knob {
+            transform: translateX(22px);
+        }
+        /* Quality preset buttons */
+        .quality-btns {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .quality-btn {
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+            background: #475569;
+            color: #fff;
+            border: 2px solid transparent;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .quality-btn:hover {
+            background: #64748b;
+        }
+        .quality-btn.active {
+            background: #4ade80;
+            color: #000;
+            border-color: #22c55e;
+        }
+        /* Settings buttons */
+        .settings-actions {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+        .settings-actions button {
+            padding: 0.8rem 1.5rem;
+            font-size: 1rem;
+            border: none;
+            border-radius: 0.5rem;
+            cursor: pointer;
+        }
+        #settings-done-btn {
+            background: #4ade80;
+            color: #000;
+        }
+        #settings-done-btn:hover {
+            background: #22c55e;
+        }
+        #settings-reset-btn {
+            background: #64748b;
+            color: #fff;
+        }
+        #settings-reset-btn:hover {
+            background: #94a3b8;
+        }
+        
+        /* Main Menu */
+        #main-menu {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, rgba(10, 10, 20, 0.95), rgba(20, 10, 40, 0.95));
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -301,44 +447,256 @@
             color: #fff;
             z-index: 30;
         }
-        #continue-prompt.hidden { display: none; }
-        #continue-prompt h2 {
-            font-size: 2rem;
-            color: #c084fc;
-            margin-bottom: 1.5rem;
+        #main-menu.hidden { display: none; }
+        .menu-title {
+            font-size: 4rem;
+            font-weight: bold;
+            background: linear-gradient(135deg, #60a5fa, #c084fc, #f472b6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+            text-shadow: none;
+            animation: title-glow 2s ease-in-out infinite alternate;
         }
-        .continue-stats {
-            font-size: 1.2rem;
+        @keyframes title-glow {
+            0% { filter: drop-shadow(0 0 20px rgba(96, 165, 250, 0.5)); }
+            100% { filter: drop-shadow(0 0 30px rgba(192, 132, 252, 0.7)); }
+        }
+        .menu-subtitle {
+            font-size: 1rem;
+            color: #94a3b8;
             margin-bottom: 2rem;
-            text-align: center;
+            letter-spacing: 0.2em;
         }
-        .continue-stats div {
-            margin: 0.5rem 0;
-        }
-        .continue-buttons {
+        .menu-buttons {
             display: flex;
-            gap: 1rem;
+            flex-direction: column;
+            gap: 0.75rem;
+            margin-bottom: 2rem;
         }
-        .continue-buttons button {
-            padding: 1rem 2rem;
+        .menu-buttons button {
+            padding: 1rem 2.5rem;
+            font-size: 1.1rem;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 0.5rem;
+            cursor: pointer;
+            min-width: 220px;
+            transition: all 0.2s;
+        }
+        .menu-buttons button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.4);
+            transform: translateY(-2px);
+        }
+        .menu-buttons button.primary {
+            background: #4ade80;
+            color: #000;
+            border-color: #4ade80;
+        }
+        .menu-buttons button.primary:hover {
+            background: #22c55e;
+            border-color: #22c55e;
+        }
+        .menu-buttons button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .continue-info {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            margin-top: -0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .menu-footer {
+            position: absolute;
+            bottom: 1.5rem;
+            font-size: 0.8rem;
+            color: #475569;
+        }
+        .menu-footer a {
+            color: #60a5fa;
+            text-decoration: none;
+        }
+        
+        /* High Scores */
+        #highscores-modal {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: system-ui, sans-serif;
+            color: #fff;
+            z-index: 35;
+        }
+        #highscores-modal.hidden { display: none; }
+        #highscores-modal h1 {
+            font-size: 2.5rem;
+            color: #fbbf24;
+            margin-bottom: 1.5rem;
+            text-shadow: 0 0 30px rgba(251, 191, 36, 0.5);
+        }
+        .highscores-list {
+            background: rgba(30, 41, 59, 0.8);
+            border-radius: 12px;
+            padding: 1rem 1.5rem;
+            min-width: 350px;
+            max-width: 90%;
+        }
+        .highscore-entry {
+            display: flex;
+            align-items: center;
+            padding: 0.6rem 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .highscore-entry:last-child {
+            border-bottom: none;
+        }
+        .highscore-rank {
+            width: 40px;
             font-size: 1.2rem;
+            font-weight: bold;
+            color: #94a3b8;
+        }
+        .highscore-entry:nth-child(1) .highscore-rank { color: #fbbf24; }
+        .highscore-entry:nth-child(2) .highscore-rank { color: #cbd5e1; }
+        .highscore-entry:nth-child(3) .highscore-rank { color: #d97706; }
+        .highscore-score {
+            flex: 1;
+            font-size: 1.3rem;
+            font-weight: bold;
+        }
+        .highscore-wave {
+            width: 80px;
+            text-align: center;
+            color: #c084fc;
+            font-size: 0.9rem;
+        }
+        .highscore-date {
+            width: 100px;
+            text-align: right;
+            color: #64748b;
+            font-size: 0.8rem;
+        }
+        .highscore-empty {
+            text-align: center;
+            color: #64748b;
+            padding: 2rem;
+            font-style: italic;
+        }
+        .highscores-actions {
+            margin-top: 1.5rem;
+        }
+        .highscores-actions button {
+            padding: 0.8rem 2rem;
+            font-size: 1rem;
+            background: #4ade80;
+            color: #000;
             border: none;
             border-radius: 0.5rem;
             cursor: pointer;
         }
-        #continue-btn {
-            background: #4ade80;
-            color: #000;
-        }
-        #continue-btn:hover {
+        .highscores-actions button:hover {
             background: #22c55e;
         }
-        #new-game-btn {
-            background: #475569;
+        
+        /* How to Play */
+        #howtoplay-modal {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: system-ui, sans-serif;
             color: #fff;
+            z-index: 35;
+            overflow-y: auto;
+            padding: 2rem;
         }
-        #new-game-btn:hover {
-            background: #64748b;
+        #howtoplay-modal.hidden { display: none; }
+        #howtoplay-modal h1 {
+            font-size: 2.5rem;
+            color: #60a5fa;
+            margin-bottom: 1.5rem;
+        }
+        .howtoplay-content {
+            background: rgba(30, 41, 59, 0.8);
+            border-radius: 12px;
+            padding: 1.5rem 2rem;
+            max-width: 500px;
+            width: 90%;
+        }
+        .howtoplay-section {
+            margin-bottom: 1.5rem;
+        }
+        .howtoplay-section:last-child {
+            margin-bottom: 0;
+        }
+        .howtoplay-section h3 {
+            font-size: 1rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.5rem;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 0.3rem;
+        }
+        .howtoplay-section p {
+            line-height: 1.6;
+            color: #e2e8f0;
+        }
+        .control-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.3rem 0;
+        }
+        .control-key {
+            background: #475569;
+            padding: 0.2rem 0.6rem;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+        .howtoplay-actions {
+            margin-top: 1.5rem;
+        }
+        .howtoplay-actions button {
+            padding: 0.8rem 2rem;
+            font-size: 1rem;
+            background: #4ade80;
+            color: #000;
+            border: none;
+            border-radius: 0.5rem;
+            cursor: pointer;
+        }
+        .howtoplay-actions button:hover {
+            background: #22c55e;
+        }
+        
+        /* Game Over - new high score highlight */
+        .new-highscore {
+            color: #fbbf24;
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            animation: highscore-pulse 1s ease-in-out infinite;
+        }
+        @keyframes highscore-pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.8; }
         }
     </style>
 </head>
@@ -408,32 +766,201 @@
             <h1>PAUSED</h1>
             <div class="pause-buttons">
                 <button id="resume-btn">Resume</button>
+                <button id="settings-btn">Settings</button>
                 <button id="save-quit-btn">Save & Quit</button>
             </div>
             <p class="pause-hint">Press ESC to resume</p>
         </div>
         
-        <!-- Continue prompt (shown on load if save exists) -->
-        <div id="continue-prompt" class="hidden">
-            <h2>Welcome Back!</h2>
-            <div class="continue-stats">
-                <div>Wave: <span id="continue-wave">1</span></div>
-                <div>Score: <span id="continue-score">0</span></div>
+        <!-- Settings modal -->
+        <div id="settings-modal" class="hidden">
+            <h1>⚙️ Settings</h1>
+            <div class="settings-content">
+                <div class="settings-section">
+                    <h3>Quality Preset</h3>
+                    <div class="setting-row">
+                        <div class="quality-btns">
+                            <button class="quality-btn" data-quality="low">Low</button>
+                            <button class="quality-btn active" data-quality="medium">Medium</button>
+                            <button class="quality-btn" data-quality="high">High</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h3>Visual Effects</h3>
+                    <div class="setting-row">
+                        <span class="setting-label">Screen Shake</span>
+                        <div class="setting-control">
+                            <div class="toggle active" data-setting="screen_shake">
+                                <div class="toggle-knob"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <span class="setting-label">Ball Trails</span>
+                        <div class="setting-control">
+                            <div class="toggle active" data-setting="trails">
+                                <div class="toggle-knob"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <span class="setting-label">Particles</span>
+                        <div class="setting-control">
+                            <div class="toggle active" data-setting="particles">
+                                <div class="toggle-knob"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <span class="setting-label">Wave Flash</span>
+                        <div class="setting-control">
+                            <div class="toggle active" data-setting="wave_flash">
+                                <div class="toggle-knob"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <span class="setting-label">Power-up Effects</span>
+                        <div class="setting-control">
+                            <div class="toggle active" data-setting="powerup_effects">
+                                <div class="toggle-knob"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h3>HUD</h3>
+                    <div class="setting-row">
+                        <span class="setting-label">Show FPS</span>
+                        <div class="setting-control">
+                            <div class="toggle active" data-setting="show_fps">
+                                <div class="toggle-knob"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h3>Accessibility</h3>
+                    <div class="setting-row">
+                        <span class="setting-label">Reduced Motion</span>
+                        <div class="setting-control">
+                            <div class="toggle" data-setting="reduced_motion">
+                                <div class="toggle-knob"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <span class="setting-label">High Contrast</span>
+                        <div class="setting-control">
+                            <div class="toggle" data-setting="high_contrast">
+                                <div class="toggle-knob"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h3>Audio</h3>
+                    <div class="setting-row">
+                        <span class="setting-label" style="color: #666;">🔇 Coming soon...</span>
+                    </div>
+                </div>
             </div>
-            <div class="continue-buttons">
-                <button id="continue-btn">Continue Run</button>
-                <button id="new-game-btn">New Game</button>
+            <div class="settings-actions">
+                <button id="settings-reset-btn">Reset to Defaults</button>
+                <button id="settings-done-btn">Done</button>
+            </div>
+        </div>
+        
+        <!-- Main Menu -->
+        <div id="main-menu">
+            <h1 class="menu-title">ROTO PONG</h1>
+            <p class="menu-subtitle">CIRCULAR ARENA ARCADE</p>
+            <div class="menu-buttons">
+                <button id="menu-continue-btn" class="primary" disabled>Continue</button>
+                <div class="continue-info" id="continue-info"></div>
+                <button id="menu-newgame-btn">New Game</button>
+                <button id="menu-highscores-btn">🏆 High Scores</button>
+                <button id="menu-howtoplay-btn">❓ How to Play</button>
+                <button id="menu-settings-btn">⚙️ Settings</button>
+            </div>
+            <div class="menu-footer">
+                Made with 🦀 Rust + WebGPU | <a href="https://github.com/paulrobello/roto-pong" target="_blank">GitHub</a>
+            </div>
+        </div>
+        
+        <!-- High Scores Modal -->
+        <div id="highscores-modal" class="hidden">
+            <h1>🏆 High Scores</h1>
+            <div class="highscores-list" id="highscores-list">
+                <div class="highscore-empty">No scores yet. Play to set a record!</div>
+            </div>
+            <div class="highscores-actions">
+                <button id="highscores-back-btn">Back to Menu</button>
+            </div>
+        </div>
+        
+        <!-- How to Play Modal -->
+        <div id="howtoplay-modal" class="hidden">
+            <h1>❓ How to Play</h1>
+            <div class="howtoplay-content">
+                <div class="howtoplay-section">
+                    <h3>Objective</h3>
+                    <p>Defend the black hole at the center! Use your paddle to bounce the ball outward and destroy blocks. Don't let the ball fall into the black hole.</p>
+                </div>
+                <div class="howtoplay-section">
+                    <h3>Controls</h3>
+                    <div class="control-row">
+                        <span>Move paddle</span>
+                        <span class="control-key">Mouse / Touch</span>
+                    </div>
+                    <div class="control-row">
+                        <span>Launch ball</span>
+                        <span class="control-key">Click / Space / Enter</span>
+                    </div>
+                    <div class="control-row">
+                        <span>Pause</span>
+                        <span class="control-key">Escape</span>
+                    </div>
+                </div>
+                <div class="howtoplay-section">
+                    <h3>Block Types</h3>
+                    <p>🟦 Glass - 1 hit | 🔷 Armored - Multiple hits<br>
+                    💥 Explosive - Chain reactions | 🟣 Portal - Slide through<br>
+                    🟩 Jello - Wobbles, 2 hits | ⬜ Invincible - Can't break</p>
+                </div>
+                <div class="howtoplay-section">
+                    <h3>Power-ups</h3>
+                    <p>🐢 Slow time | 🔥 Piercing shots | ↔️ Wider paddle<br>
+                    🛡️ Shield (blocks one hit) | ⚫ Multi-ball</p>
+                </div>
+                <div class="howtoplay-section">
+                    <h3>Tips</h3>
+                    <p>Build combos for score multipliers! The ball speeds up when hitting the paddle. Gravity pulls everything toward the black hole.</p>
+                </div>
+            </div>
+            <div class="howtoplay-actions">
+                <button id="howtoplay-back-btn">Back to Menu</button>
             </div>
         </div>
         
         <!-- Game Over overlay -->
         <div id="game-over" class="hidden">
             <h1>GAME OVER</h1>
+            <div id="new-highscore-banner" class="new-highscore hidden">🏆 NEW HIGH SCORE! 🏆</div>
             <div class="stats">
                 <div>Final Score: <span id="final-score">0</span></div>
                 <div>Wave Reached: <span id="final-wave">1</span></div>
+                <div id="highscore-rank" style="margin-top: 0.5rem; color: #fbbf24;"></div>
             </div>
-            <button id="restart-btn">Play Again</button>
+            <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                <button id="restart-btn">Play Again</button>
+                <button id="gameover-menu-btn" style="background: #475569; color: #fff;">Main Menu</button>
+            </div>
         </div>
     </div>
     <script type="module">

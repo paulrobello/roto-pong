@@ -13,7 +13,9 @@ mod wasm_game {
     use web_sys::{HtmlCanvasElement, MouseEvent, TouchEvent};
 
     use roto_pong::consts::*;
+    use roto_pong::highscores::{format_date, HighScores};
     use roto_pong::renderer::SdfRenderState;
+    use roto_pong::settings::Settings;
     use roto_pong::sim::{GameState, TickInput, tick};
 
     // JS binding for pointer lock
@@ -54,6 +56,8 @@ mod wasm_game {
     struct Game {
         state: GameState,
         render_state: Option<SdfRenderState>,
+        settings: Settings,
+        highscores: HighScores,
         accumulator: f32,
         last_time: f64,
         input: TickInput,
@@ -66,6 +70,8 @@ mod wasm_game {
         last_phase: roto_pong::sim::GamePhase,
         // Pointer lock state
         pointer_locked: bool,
+        // Track if score was submitted this game over
+        score_submitted: bool,
     }
 
     impl Game {
@@ -74,6 +80,8 @@ mod wasm_game {
             Self {
                 state: GameState::new(seed),
                 render_state: None,
+                settings: Settings::load(),
+                highscores: HighScores::load(),
                 accumulator: 0.0,
                 last_time: 0.0,
                 input: TickInput::default(),
@@ -83,6 +91,7 @@ mod wasm_game {
                 fps: 0,
                 last_phase: GamePhase::Serve,
                 pointer_locked: false,
+                score_submitted: false,
             }
         }
 
@@ -137,14 +146,49 @@ mod wasm_game {
                 if current_phase == GamePhase::Breather || current_phase == GamePhase::Paused {
                     self.save_game();
                 }
+                // Submit score when entering GameOver
+                if current_phase == GamePhase::GameOver {
+                    let rank = self.submit_score();
+                    self.show_game_over_highscore(rank);
+                }
                 self.last_phase = current_phase;
+            }
+        }
+
+        /// Show high score info on game over screen
+        fn show_game_over_highscore(&self, rank: Option<usize>) {
+            let document = web_sys::window().unwrap().document().unwrap();
+
+            // Show/hide new high score banner
+            if let Some(banner) = document.get_element_by_id("new-highscore-banner") {
+                if rank.is_some() {
+                    let _ = banner.set_attribute("class", "new-highscore");
+                } else {
+                    let _ = banner.set_attribute("class", "new-highscore hidden");
+                }
+            }
+
+            // Show rank info
+            if let Some(rank_el) = document.get_element_by_id("highscore-rank") {
+                if let Some(r) = rank {
+                    rank_el.set_text_content(Some(&format!("Rank #{} on leaderboard!", r)));
+                } else if self.highscores.top_score().is_some() {
+                    let top = self.highscores.top_score().unwrap();
+                    if self.state.score > 0 {
+                        rank_el.set_text_content(Some(&format!("Best: {}", top)));
+                    } else {
+                        rank_el.set_text_content(None);
+                    }
+                } else {
+                    rank_el.set_text_content(None);
+                }
             }
         }
 
         /// Render the current frame
         fn render(&mut self, time: f64) {
             if let Some(ref mut render_state) = self.render_state {
-                match render_state.render(&self.state, time) {
+                match render_state.render(&self.state, &self.settings, time) {
                     Ok(_) => {}
                     Err(wgpu::SurfaceError::Lost) => {
                         render_state.resize(render_state.size.0, render_state.size.1);
@@ -191,13 +235,20 @@ mod wasm_game {
                 el.set_text_content(Some(&(self.state.wave_index + 1).to_string()));
             }
 
-            // Update FPS
-            if let Some(el) = document
-                .query_selector("#hud-fps .hud-value")
-                .ok()
-                .flatten()
-            {
-                el.set_text_content(Some(&self.fps.to_string()));
+            // Update FPS (respect settings)
+            if let Some(el) = document.get_element_by_id("hud-fps") {
+                if self.settings.show_fps {
+                    let _ = el.set_attribute("class", "hud-item");
+                    if let Some(val) = document
+                        .query_selector("#hud-fps .hud-value")
+                        .ok()
+                        .flatten()
+                    {
+                        val.set_text_content(Some(&self.fps.to_string()));
+                    }
+                } else {
+                    let _ = el.set_attribute("class", "hud-item hidden");
+                }
             }
 
             // Update combo (only show when 2+ for actual combo)
@@ -337,6 +388,7 @@ mod wasm_game {
             self.state = GameState::new(seed);
             self.accumulator = 0.0;
             self.input = TickInput::default();
+            self.score_submitted = false;
         }
 
         /// Load game state from saved data
@@ -344,6 +396,25 @@ mod wasm_game {
             self.state = state;
             self.accumulator = 0.0;
             self.input = TickInput::default();
+            self.score_submitted = false;
+        }
+
+        /// Submit score to high scores (returns rank if qualified)
+        fn submit_score(&mut self) -> Option<usize> {
+            if self.score_submitted || self.state.score == 0 {
+                return None;
+            }
+            self.score_submitted = true;
+            let timestamp = js_sys::Date::now();
+            let rank = self.highscores.add_score(
+                self.state.score,
+                self.state.wave_index + 1,
+                timestamp,
+            );
+            if rank.is_some() {
+                self.highscores.save();
+            }
+            rank
         }
     }
 
@@ -362,6 +433,56 @@ mod wasm_game {
         {
             let _ = storage.remove_item("roto_pong_save");
             log::info!("Saved game cleared");
+        }
+    }
+
+    /// Render high scores list to DOM
+    fn render_highscores_list(highscores: &HighScores) {
+        let document = web_sys::window().unwrap().document().unwrap();
+
+        if let Some(list) = document.get_element_by_id("highscores-list") {
+            if highscores.is_empty() {
+                list.set_inner_html(r#"<div class="highscore-empty">No scores yet. Play to set a record!</div>"#);
+            } else {
+                let mut html = String::new();
+                for (i, entry) in highscores.entries.iter().enumerate() {
+                    let rank = i + 1;
+                    let date_str = format_date(entry.timestamp);
+                    html.push_str(&format!(
+                        r#"<div class="highscore-entry">
+                            <span class="highscore-rank">#{}</span>
+                            <span class="highscore-score">{}</span>
+                            <span class="highscore-wave">Wave {}</span>
+                            <span class="highscore-date">{}</span>
+                        </div>"#,
+                        rank, entry.score, entry.wave, date_str
+                    ));
+                }
+                list.set_inner_html(&html);
+            }
+        }
+    }
+
+    /// Update main menu continue button state
+    fn update_main_menu_continue(saved_game: &Option<GameState>) {
+        let document = web_sys::window().unwrap().document().unwrap();
+
+        if let Some(btn) = document.get_element_by_id("menu-continue-btn") {
+            if let Some(save) = saved_game {
+                let _ = btn.remove_attribute("disabled");
+                if let Some(info) = document.get_element_by_id("continue-info") {
+                    info.set_text_content(Some(&format!(
+                        "Wave {} • Score {}",
+                        save.wave_index + 1,
+                        save.score
+                    )));
+                }
+            } else {
+                let _ = btn.set_attribute("disabled", "true");
+                if let Some(info) = document.get_element_by_id("continue-info") {
+                    info.set_text_content(None);
+                }
+            }
         }
     }
 
@@ -429,25 +550,10 @@ mod wasm_game {
 
         // Check for saved game
         let saved_game = load_saved_game();
-        let has_save = saved_game.is_some();
 
-        if let Some(ref save) = saved_game {
-            // Show continue prompt
-            if let Some(el) = document.get_element_by_id("continue-prompt") {
-                let _ = el.set_attribute("class", "");
-            }
-            if let Some(el) = document.get_element_by_id("continue-wave") {
-                el.set_text_content(Some(&(save.wave_index + 1).to_string()));
-            }
-            if let Some(el) = document.get_element_by_id("continue-score") {
-                el.set_text_content(Some(&save.score.to_string()));
-            }
-            log::info!("Found saved game at wave {}", save.wave_index + 1);
-        } else {
-            // Generate initial wave for new game
-            let mut g = game.borrow_mut();
-            roto_pong::sim::generate_wave(&mut g.state);
-        }
+        // Update main menu state
+        update_main_menu_continue(&saved_game);
+        render_highscores_list(&game.borrow().highscores);
 
         // Set up input handlers
         setup_input_handlers(&canvas, game.clone());
@@ -458,18 +564,16 @@ mod wasm_game {
         // Set up pause menu buttons
         setup_pause_menu(game.clone());
 
-        // Set up continue prompt buttons
-        setup_continue_prompt(game.clone(), saved_game);
+        // Set up settings modal
+        setup_settings_modal(game.clone());
+
+        // Set up main menu buttons
+        setup_main_menu(game.clone(), saved_game);
 
         // Set up auto-pause on visibility change
         setup_auto_pause(game.clone());
 
-        // Show HUD (unless we're showing continue prompt)
-        if let Some(hud) = document.get_element_by_id("hud") {
-            if !has_save {
-                let _ = hud.set_attribute("class", "");
-            }
-        }
+        // Start at main menu (HUD hidden, main-menu visible by default in HTML)
 
         // Start game loop
         request_animation_frame(game);
@@ -555,7 +659,6 @@ mod wasm_game {
         // Mouse click - request pointer lock and launch
         {
             let game = game.clone();
-            let canvas_clone = canvas.clone();
             let closure = Closure::<dyn FnMut(_)>::new(move |_event: MouseEvent| {
                 let mut g = game.borrow_mut();
                 g.input.launch = true;
@@ -707,6 +810,25 @@ mod wasm_game {
             closure.forget();
         }
 
+        // Settings button
+        if let Some(btn) = document.get_element_by_id("settings-btn") {
+            let game_for_settings = game.clone();
+            let closure = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
+                let document = web_sys::window().unwrap().document().unwrap();
+                // Hide pause menu, show settings
+                if let Some(el) = document.get_element_by_id("pause-menu") {
+                    let _ = el.set_attribute("class", "hidden");
+                }
+                if let Some(el) = document.get_element_by_id("settings-modal") {
+                    let _ = el.set_attribute("class", "");
+                }
+                // Sync UI with current settings
+                sync_settings_ui(&game_for_settings.borrow().settings);
+            });
+            let _ = btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
+            closure.forget();
+        }
+
         // Save & Quit button
         if let Some(btn) = document.get_element_by_id("save-quit-btn") {
             let closure = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
@@ -722,26 +844,205 @@ mod wasm_game {
         }
     }
 
-    fn setup_continue_prompt(game: Rc<RefCell<Game>>, saved_game: Option<GameState>) {
+    /// Sync settings UI toggles/buttons with current settings
+    fn sync_settings_ui(settings: &Settings) {
+        let document = web_sys::window().unwrap().document().unwrap();
+
+        // Quality preset buttons
+        let qualities = ["low", "medium", "high"];
+        let current_quality = settings.quality.as_str().to_lowercase();
+        for q in qualities {
+            if let Ok(Some(btn)) = document.query_selector(&format!(".quality-btn[data-quality='{}']", q)) {
+                if q == current_quality {
+                    let _ = btn.set_attribute("class", "quality-btn active");
+                } else {
+                    let _ = btn.set_attribute("class", "quality-btn");
+                }
+            }
+        }
+
+        // Toggle switches
+        let toggles = [
+            ("screen_shake", settings.screen_shake),
+            ("trails", settings.trails),
+            ("particles", settings.particles),
+            ("wave_flash", settings.wave_flash),
+            ("powerup_effects", settings.powerup_effects),
+            ("show_fps", settings.show_fps),
+            ("reduced_motion", settings.reduced_motion),
+            ("high_contrast", settings.high_contrast),
+        ];
+        for (name, value) in toggles {
+            if let Ok(Some(toggle)) = document.query_selector(&format!(".toggle[data-setting='{}']", name)) {
+                if value {
+                    let _ = toggle.set_attribute("class", "toggle active");
+                } else {
+                    let _ = toggle.set_attribute("class", "toggle");
+                }
+            }
+        }
+    }
+
+    fn setup_settings_modal(game: Rc<RefCell<Game>>) {
         let window = web_sys::window().unwrap();
         let document = window.document().unwrap();
 
+        // Done button - close settings and return to previous screen
+        if let Some(btn) = document.get_element_by_id("settings-done-btn") {
+            let game = game.clone();
+            let closure = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
+                use roto_pong::sim::GamePhase;
+                let document = web_sys::window().unwrap().document().unwrap();
+                // Save settings
+                game.borrow().settings.save();
+                // Hide settings
+                if let Some(el) = document.get_element_by_id("settings-modal") {
+                    let _ = el.set_attribute("class", "hidden");
+                }
+                // Return to appropriate screen based on game state
+                let phase = game.borrow().state.phase;
+                if phase == GamePhase::Paused {
+                    if let Some(el) = document.get_element_by_id("pause-menu") {
+                        let _ = el.set_attribute("class", "");
+                    }
+                } else {
+                    // Return to main menu
+                    if let Some(el) = document.get_element_by_id("main-menu") {
+                        let _ = el.set_attribute("class", "");
+                    }
+                }
+            });
+            let _ = btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
+            closure.forget();
+        }
+
+        // Reset button - reset to defaults
+        if let Some(btn) = document.get_element_by_id("settings-reset-btn") {
+            let game = game.clone();
+            let closure = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
+                game.borrow_mut().settings = Settings::default();
+                sync_settings_ui(&game.borrow().settings);
+                log::info!("Settings reset to defaults");
+            });
+            let _ = btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
+            closure.forget();
+        }
+
+        // Quality preset buttons
+        if let Ok(btns) = document.query_selector_all(".quality-btn") {
+            for i in 0..btns.length() {
+                if let Some(btn) = btns.get(i) {
+                    let game = game.clone();
+                    let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::MouseEvent| {
+                        if let Some(target) = event.target() {
+                            let el: web_sys::Element = target.dyn_into().unwrap();
+                            if let Some(quality_str) = el.get_attribute("data-quality") {
+                                if let Some(preset) = roto_pong::settings::QualityPreset::from_str(&quality_str) {
+                                    let mut g = game.borrow_mut();
+                                    g.settings.apply_preset(preset);
+                                    drop(g);
+                                    sync_settings_ui(&game.borrow().settings);
+                                    log::info!("Quality set to: {:?}", preset);
+                                }
+                            }
+                        }
+                    });
+                    let _ = btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
+                    closure.forget();
+                }
+            }
+        }
+
+        // Toggle switches
+        if let Ok(toggles) = document.query_selector_all(".toggle") {
+            for i in 0..toggles.length() {
+                if let Some(toggle) = toggles.get(i) {
+                    let game = game.clone();
+                    let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::MouseEvent| {
+                        if let Some(target) = event.target() {
+                            // Might click the knob, so find the toggle parent
+                            let el: web_sys::Element = target.dyn_into().unwrap();
+                            let toggle_el = if el.class_list().contains("toggle") {
+                                el
+                            } else if let Some(parent) = el.parent_element() {
+                                parent
+                            } else {
+                                return;
+                            };
+
+                            if let Some(setting_name) = toggle_el.get_attribute("data-setting") {
+                                let mut g = game.borrow_mut();
+                                let new_value = !toggle_el.class_list().contains("active");
+                                let setting_key: &str = &setting_name;
+
+                                match setting_key {
+                                    "screen_shake" => g.settings.screen_shake = new_value,
+                                    "trails" => g.settings.trails = new_value,
+                                    "particles" => g.settings.particles = new_value,
+                                    "wave_flash" => g.settings.wave_flash = new_value,
+                                    "powerup_effects" => g.settings.powerup_effects = new_value,
+                                    "show_fps" => g.settings.show_fps = new_value,
+                                    "reduced_motion" => g.settings.reduced_motion = new_value,
+                                    "high_contrast" => g.settings.high_contrast = new_value,
+                                    _ => {}
+                                }
+
+                                // Update toggle visual
+                                if new_value {
+                                    let _ = toggle_el.set_attribute("class", "toggle active");
+                                } else {
+                                    let _ = toggle_el.set_attribute("class", "toggle");
+                                }
+
+                                log::info!("Setting {} = {}", setting_name, new_value);
+                            }
+                        }
+                    });
+                    let _ = toggle.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
+                    closure.forget();
+                }
+            }
+        }
+    }
+
+    fn setup_main_menu(game: Rc<RefCell<Game>>, saved_game: Option<GameState>) {
+        let window = web_sys::window().unwrap();
+        let document = window.document().unwrap();
+
+        // Helper to start game (hide menu, show HUD)
+        fn start_game() {
+            let document = web_sys::window().unwrap().document().unwrap();
+            if let Some(el) = document.get_element_by_id("main-menu") {
+                let _ = el.set_attribute("class", "hidden");
+            }
+            if let Some(el) = document.get_element_by_id("hud") {
+                let _ = el.set_attribute("class", "");
+            }
+        }
+
+        // Helper to show main menu
+        fn show_main_menu() {
+            let document = web_sys::window().unwrap().document().unwrap();
+            if let Some(el) = document.get_element_by_id("main-menu") {
+                let _ = el.set_attribute("class", "");
+            }
+            if let Some(el) = document.get_element_by_id("hud") {
+                let _ = el.set_attribute("class", "hidden");
+            }
+            if let Some(el) = document.get_element_by_id("game-over") {
+                let _ = el.set_attribute("class", "hidden");
+            }
+        }
+
         // Continue button
-        if let Some(btn) = document.get_element_by_id("continue-btn") {
+        if let Some(btn) = document.get_element_by_id("menu-continue-btn") {
             let game = game.clone();
             let saved = saved_game.clone();
             let closure = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
                 if let Some(ref state) = saved {
                     game.borrow_mut().load_state(state.clone());
                     log::info!("Loaded saved game at wave {}", state.wave_index + 1);
-                }
-                // Hide continue prompt, show HUD
-                let document = web_sys::window().unwrap().document().unwrap();
-                if let Some(el) = document.get_element_by_id("continue-prompt") {
-                    let _ = el.set_attribute("class", "hidden");
-                }
-                if let Some(el) = document.get_element_by_id("hud") {
-                    let _ = el.set_attribute("class", "");
+                    start_game();
                 }
             });
             let _ = btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
@@ -749,26 +1050,110 @@ mod wasm_game {
         }
 
         // New Game button
-        if let Some(btn) = document.get_element_by_id("new-game-btn") {
+        if let Some(btn) = document.get_element_by_id("menu-newgame-btn") {
+            let game = game.clone();
             let closure = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
-                // Clear saved game
                 clear_saved_game();
-
-                // Start fresh
                 let seed = js_sys::Date::now() as u64;
                 game.borrow_mut().restart(seed);
                 roto_pong::sim::generate_wave(&mut game.borrow_mut().state);
+                start_game();
+                log::info!("Started new game with seed: {}", seed);
+            });
+            let _ = btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
+            closure.forget();
+        }
 
-                // Hide continue prompt, show HUD
+        // High Scores button
+        if let Some(btn) = document.get_element_by_id("menu-highscores-btn") {
+            let game = game.clone();
+            let closure = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
                 let document = web_sys::window().unwrap().document().unwrap();
-                if let Some(el) = document.get_element_by_id("continue-prompt") {
+                // Update high scores display
+                render_highscores_list(&game.borrow().highscores);
+                // Hide main menu, show high scores
+                if let Some(el) = document.get_element_by_id("main-menu") {
                     let _ = el.set_attribute("class", "hidden");
                 }
-                if let Some(el) = document.get_element_by_id("hud") {
+                if let Some(el) = document.get_element_by_id("highscores-modal") {
                     let _ = el.set_attribute("class", "");
                 }
+            });
+            let _ = btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
+            closure.forget();
+        }
 
-                log::info!("Started new game with seed: {}", seed);
+        // High Scores back button
+        if let Some(btn) = document.get_element_by_id("highscores-back-btn") {
+            let closure = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
+                let document = web_sys::window().unwrap().document().unwrap();
+                if let Some(el) = document.get_element_by_id("highscores-modal") {
+                    let _ = el.set_attribute("class", "hidden");
+                }
+                if let Some(el) = document.get_element_by_id("main-menu") {
+                    let _ = el.set_attribute("class", "");
+                }
+            });
+            let _ = btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
+            closure.forget();
+        }
+
+        // How to Play button
+        if let Some(btn) = document.get_element_by_id("menu-howtoplay-btn") {
+            let closure = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
+                let document = web_sys::window().unwrap().document().unwrap();
+                if let Some(el) = document.get_element_by_id("main-menu") {
+                    let _ = el.set_attribute("class", "hidden");
+                }
+                if let Some(el) = document.get_element_by_id("howtoplay-modal") {
+                    let _ = el.set_attribute("class", "");
+                }
+            });
+            let _ = btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
+            closure.forget();
+        }
+
+        // How to Play back button
+        if let Some(btn) = document.get_element_by_id("howtoplay-back-btn") {
+            let closure = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
+                let document = web_sys::window().unwrap().document().unwrap();
+                if let Some(el) = document.get_element_by_id("howtoplay-modal") {
+                    let _ = el.set_attribute("class", "hidden");
+                }
+                if let Some(el) = document.get_element_by_id("main-menu") {
+                    let _ = el.set_attribute("class", "");
+                }
+            });
+            let _ = btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
+            closure.forget();
+        }
+
+        // Settings button (from main menu)
+        if let Some(btn) = document.get_element_by_id("menu-settings-btn") {
+            let game = game.clone();
+            let closure = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
+                let document = web_sys::window().unwrap().document().unwrap();
+                if let Some(el) = document.get_element_by_id("main-menu") {
+                    let _ = el.set_attribute("class", "hidden");
+                }
+                if let Some(el) = document.get_element_by_id("settings-modal") {
+                    let _ = el.set_attribute("class", "");
+                }
+                sync_settings_ui(&game.borrow().settings);
+            });
+            let _ = btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
+            closure.forget();
+        }
+
+        // Game Over -> Main Menu button
+        if let Some(btn) = document.get_element_by_id("gameover-menu-btn") {
+            let game = game.clone();
+            let closure = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::MouseEvent| {
+                // Update highscores display
+                render_highscores_list(&game.borrow().highscores);
+                // Update continue button state (no save after game over)
+                update_main_menu_continue(&None);
+                show_main_menu();
             });
             let _ = btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
             closure.forget();

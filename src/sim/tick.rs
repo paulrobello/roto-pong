@@ -574,7 +574,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                     ball.pos += ball.vel * step_dt;
 
                     // --- SDF Wall Collision ---
-                    let wall_dist = ball.pos.length() - ARENA_OUTER_RADIUS;
+                    let wall_dist = ball.pos.length() - state.arena_radius;
                     if wall_dist > -ball.radius {
                         // Hit outer wall
                         let normal = -ball.pos.normalize_or_zero();
@@ -1295,13 +1295,32 @@ fn reflect_velocity(vel: Vec2, normal: Vec2) -> Vec2 {
     super::collision::reflect_velocity(vel, normal)
 }
 
+/// Calculate arena radius for a given wave
+pub fn arena_radius_for_wave(wave: u32) -> f32 {
+    use super::state::{BASE_ARENA_RADIUS, MAX_ARENA_RADIUS, ARENA_GROWTH_PER_WAVE, ARENA_GROWTH_START_WAVE};
+    
+    if wave < ARENA_GROWTH_START_WAVE {
+        BASE_ARENA_RADIUS
+    } else {
+        let growth_waves = wave - ARENA_GROWTH_START_WAVE;
+        let growth = growth_waves as f32 * ARENA_GROWTH_PER_WAVE;
+        (BASE_ARENA_RADIUS + growth).min(MAX_ARENA_RADIUS)
+    }
+}
+
 /// Generate wave with variable blocks, widths, and layers
 pub fn generate_wave(state: &mut GameState) {
     use super::arc::ArcSegment;
-    use super::state::{Block, BlockKind};
+    use super::state::{Block, BlockKind, BASE_ARENA_RADIUS};
     use std::f32::consts::PI;
 
     let wave = state.wave_index;
+
+    // Update arena radius for this wave
+    state.arena_radius = arena_radius_for_wave(wave);
+    
+    // Scale factor for positioning (1.0 at base, increases as arena grows)
+    let scale = state.arena_radius / BASE_ARENA_RADIUS;
 
     // Deterministic "randomness" based on wave number AND game seed
     // This gives variety between runs while keeping determinism within a run
@@ -1309,11 +1328,20 @@ pub fn generate_wave(state: &mut GameState) {
         .wrapping_mul(2654435761)
         .wrapping_add(state.seed)) as u32;
 
-    // Number of layers increases with wave (1-4 layers)
-    let num_layers = 1 + (wave / 3).min(3);
+    // Number of layers increases with wave (1-4 layers, then 5 for huge arenas)
+    let base_layers = 1 + (wave / 3).min(3);
+    let num_layers = if state.arena_radius > 550.0 { base_layers + 1 } else { base_layers };
 
-    // Layer radii from outer to inner (outer layer close to wall at 400)
-    let layer_radii = [375.0, 320.0, 265.0, 210.0];
+    // Layer radii from outer to inner - scaled by arena size
+    // Base radii at 400 arena: [375, 320, 265, 210, 155]
+    let base_radii = [375.0, 320.0, 265.0, 210.0, 155.0];
+    let layer_radii: [f32; 5] = [
+        base_radii[0] * scale,
+        base_radii[1] * scale,
+        base_radii[2] * scale,
+        base_radii[3] * scale,
+        base_radii[4] * scale,
+    ];
 
     for layer in 0..num_layers {
         let radius = layer_radii[layer as usize];
