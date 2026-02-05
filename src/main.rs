@@ -147,6 +147,32 @@ mod wasm_game {
                 el.set_text_content(Some(&self.fps.to_string()));
             }
 
+            // Update combo
+            if let Some(el) = document.get_element_by_id("hud-combo") {
+                if self.state.combo > 0 {
+                    let _ = el.set_attribute("class", "hud-item");
+                    
+                    // Update combo value
+                    if let Some(val) = document.query_selector("#hud-combo .hud-value").ok().flatten() {
+                        let old_text = val.text_content().unwrap_or_default();
+                        let new_text = self.state.combo.to_string();
+                        if old_text != new_text {
+                            val.set_text_content(Some(&new_text));
+                            // Trigger pop animation
+                            let _ = el.set_attribute("class", "hud-item pop");
+                        }
+                    }
+                    
+                    // Update multiplier (1.0 + combo * 0.1, max 3.0)
+                    if let Some(mult) = document.query_selector("#hud-combo .multiplier").ok().flatten() {
+                        let multiplier = (1.0 + self.state.combo as f32 * 0.1).min(3.0);
+                        mult.set_text_content(Some(&format!("x{:.1}", multiplier)));
+                    }
+                } else {
+                    let _ = el.set_attribute("class", "hud-item hidden");
+                }
+            }
+
             // Show/hide serve prompt
             if let Some(el) = document.get_element_by_id("serve-prompt") {
                 if self.state.phase == GamePhase::Serve {

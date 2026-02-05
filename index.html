@@ -100,6 +100,20 @@
         #hud-lives .hud-value { color: #4ade80; }
         #hud-score .hud-value { color: #60a5fa; }
         #hud-wave .hud-value { color: #c084fc; }
+        #hud-combo .hud-value { color: #f97316; }
+        #hud-combo.hidden { display: none; }
+        #hud-combo.pop .hud-value {
+            animation: combo-pop 0.3s ease-out;
+        }
+        @keyframes combo-pop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.4); }
+            100% { transform: scale(1); }
+        }
+        .multiplier {
+            font-size: 0.9rem;
+            color: #fbbf24;
+        }
         
         /* Serve prompt */
         #serve-prompt {
@@ -296,6 +310,13 @@
                 <div class="hud-item" id="hud-score">
                     <span class="hud-label">Score</span>
                     <span class="hud-value">0</span>
+                </div>
+            </div>
+            <div class="hud-center">
+                <div class="hud-item" id="hud-combo" class="hidden">
+                    <span class="hud-label">Combo</span>
+                    <span class="hud-value">0</span>
+                    <span class="multiplier">x1.0</span>
                 </div>
             </div>
             <div class="hud-right">
