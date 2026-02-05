@@ -147,9 +147,9 @@ mod wasm_game {
                 el.set_text_content(Some(&self.fps.to_string()));
             }
 
-            // Update combo
+            // Update combo (only show when 2+ for actual combo)
             if let Some(el) = document.get_element_by_id("hud-combo") {
-                if self.state.combo > 0 {
+                if self.state.combo > 1 {
                     let _ = el.set_attribute("class", "hud-item");
                     
                     // Update combo value
@@ -163,9 +163,9 @@ mod wasm_game {
                         }
                     }
                     
-                    // Update multiplier (1.0 + combo * 0.1, max 3.0)
+                    // Update multiplier (1.1x at combo 2, up to 3.0x)
                     if let Some(mult) = document.query_selector("#hud-combo .multiplier").ok().flatten() {
-                        let multiplier = (1.0 + self.state.combo as f32 * 0.1).min(3.0);
+                        let multiplier = (1.0 + (self.state.combo - 1) as f32 * 0.1).min(3.0);
                         mult.set_text_content(Some(&format!("x{:.1}", multiplier)));
                     }
                 } else {

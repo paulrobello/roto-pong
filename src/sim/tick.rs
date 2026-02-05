@@ -500,7 +500,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                         // Remove dead blocks from explosion
                         state.blocks.retain(|b| b.hp > 0);
                         
-                        // Score with combo multiplier! (1.0 + combo * 0.1, max 3.0x)
+                        // Score with combo multiplier! (1.1x at combo 2, up to 3.0x at 21)
                         let base_score = match block.kind {
                             super::state::BlockKind::Glass => 10,
                             super::state::BlockKind::Armored => 25,
@@ -509,7 +509,11 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                             super::state::BlockKind::Invincible => 0, // Should never happen
                             _ => 15,
                         };
-                        let multiplier = (1.0 + state.combo as f32 * 0.1).min(3.0);
+                        let multiplier = if state.combo > 1 {
+                            (1.0 + (state.combo - 1) as f32 * 0.1).min(3.0)
+                        } else {
+                            1.0
+                        };
                         state.score += (base_score as f32 * multiplier) as u64;
                     }
                 }
