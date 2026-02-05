@@ -38,6 +38,8 @@ struct Globals {
     screen_shake: f32,      // offset 52
     pickup_count: u32,      // offset 56
     shield_active: u32,     // offset 60 - 1 if shield active, 0 otherwise
+    wave_flash: f32,        // offset 64 - wave clear flash effect
+    _pad2: [u32; 3],        // pad to 80 bytes for alignment
 }
 
 #[repr(C)]
@@ -196,6 +198,8 @@ impl SdfRenderState {
                 screen_shake: 0.0,
                 pickup_count: 0,
                 shield_active: 0,
+                wave_flash: 0.0,
+                _pad2: [0; 3],
             }),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
@@ -505,6 +509,8 @@ impl SdfRenderState {
             screen_shake: state.screen_shake,
             pickup_count,
             shield_active: if state.effects.shield_active { 1 } else { 0 },
+            wave_flash: state.wave_flash,
+            _pad2: [0; 3],
         };
         self.queue
             .write_buffer(&self.globals_buffer, 0, bytemuck::bytes_of(&globals));

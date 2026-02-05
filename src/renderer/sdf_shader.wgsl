@@ -25,6 +25,8 @@ struct Globals {
     screen_shake: f32,       // offset 52
     pickup_count: u32,       // offset 56
     shield_active: u32,      // offset 60
+    wave_flash: f32,         // offset 64 - wave clear flash
+    _pad2: vec3<u32>,        // offset 68 - padding to 80 bytes
 }
 
 struct Paddle {
@@ -661,6 +663,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         else if (part.color_u == 3u) { part_color = vec3<f32>(1.0, 0.95, 0.4); } // Invincible - gold
         else if (part.color_u == 4u) { part_color = vec3<f32>(0.3, 1.0, 0.9); } // Portal - teal
         else if (part.color_u == 5u) { part_color = vec3<f32>(0.5, 1.0, 0.4); } // Jello - lime
+        // 🔥 Special effect particles
+        else if (part.color_u == 99u) { part_color = vec3<f32>(0.7, 0.95, 1.0); } // Paddle sparks - white/cyan
+        else if (part.color_u == 100u) { part_color = vec3<f32>(1.0, 0.85, 0.2); } // Wave clear - gold
+        else if (part.color_u == 101u) { part_color = vec3<f32>(1.0, 1.0, 0.95); } // Wave clear - white
         
         // BIG outer glow
         let outer_glow = exp(-max(d, 0.0) * 0.15) * part.life * 0.8;
@@ -738,6 +744,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let inner_d = pickup_d + 6.0;
         let inner_mask = 1.0 - smoothstep(-aa, aa, inner_d);
         color = mix(color, vec3<f32>(1.0, 1.0, 1.0), inner_mask * 0.6);
+    }
+    
+    // 🎆 Wave clear flash effect!
+    if (globals.wave_flash > 0.01) {
+        // Golden flash radiating outward
+        let flash_ring = abs(length(p) - 200.0 * (1.0 - globals.wave_flash)) - 30.0;
+        let ring_intensity = exp(-max(flash_ring, 0.0) * 0.05) * globals.wave_flash;
+        color += vec3<f32>(1.0, 0.9, 0.5) * ring_intensity * 0.8;
+        
+        // Overall screen flash
+        color = mix(color, vec3<f32>(1.0, 0.95, 0.8), globals.wave_flash * 0.3);
     }
     
     // Vignette

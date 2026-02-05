@@ -356,6 +356,9 @@ pub struct GameState {
     /// Screen shake intensity (0.0-1.0, decays over time)
     #[serde(skip)]
     pub screen_shake: f32,
+    /// Wave clear flash (0.0-1.0, bright flash that fades)
+    #[serde(skip)]
+    pub wave_flash: f32,
     /// Next entity ID
     next_id: u32,
 }
@@ -380,6 +383,7 @@ impl GameState {
             effects: ActiveEffects::default(),
             particles: Vec::new(),
             screen_shake: 0.0,
+            wave_flash: 0.0,
             next_id: 1,
         };
 
