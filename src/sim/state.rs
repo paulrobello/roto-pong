@@ -281,6 +281,7 @@ pub struct ActiveEffects {
     pub slow_ticks: u32,
     pub piercing_ticks: u32,
     pub widen_ticks: u32,
+    pub widen_stacks: u32, // Number of stacked widen powerups (+50% each)
     pub shield_active: bool,
 }
 

@@ -990,7 +990,8 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                         state.effects.piercing_ticks = 480; // 4 seconds
                     }
                     PickupKind::WidenPaddle => {
-                        state.effects.widen_ticks = 720; // 6 seconds
+                        state.effects.widen_ticks = 720; // 6 seconds per stack
+                        state.effects.widen_stacks += 1; // Stack additively!
                     }
                     PickupKind::Shield => {
                         state.effects.shield_active = true;
@@ -1003,7 +1004,17 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
             // Decay timed effects
             state.effects.slow_ticks = state.effects.slow_ticks.saturating_sub(1);
             state.effects.piercing_ticks = state.effects.piercing_ticks.saturating_sub(1);
-            state.effects.widen_ticks = state.effects.widen_ticks.saturating_sub(1);
+            
+            // Widen stacks decay one at a time
+            if state.effects.widen_ticks > 0 {
+                state.effects.widen_ticks -= 1;
+            } else if state.effects.widen_stacks > 0 {
+                // Timer expired, remove one stack and reset timer if more stacks remain
+                state.effects.widen_stacks -= 1;
+                if state.effects.widen_stacks > 0 {
+                    state.effects.widen_ticks = 720; // Reset timer for next stack
+                }
+            }
 
             // Apply piercing effect to all balls
             let piercing_active = state.effects.piercing_ticks > 0;
@@ -1011,12 +1022,17 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                 ball.piercing = piercing_active;
             }
 
-            // Apply widen paddle effect (50% wider when active)
-            state.paddle.arc_width = if state.effects.widen_ticks > 0 {
-                PADDLE_ARC_WIDTH * 1.5
+            // Calculate target paddle width (+50% per stack, capped at 3x)
+            let target_width = if state.effects.widen_stacks > 0 {
+                (PADDLE_ARC_WIDTH * (1.0 + 0.5 * state.effects.widen_stacks as f32)).min(PADDLE_ARC_WIDTH * 3.0)
             } else {
                 PADDLE_ARC_WIDTH
             };
+            
+            // Springy interpolation toward target width
+            let spring_speed = 8.0; // How fast it springs
+            let diff = target_width - state.paddle.arc_width;
+            state.paddle.arc_width += diff * spring_speed * dt;
 
             // Apply slow effect - reduce ball speed by 40%
             if state.effects.slow_ticks > 0 {
