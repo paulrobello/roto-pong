@@ -979,7 +979,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                                     state: BallState::Free,
                                     piercing: ball.piercing,
                                     paddle_cooldown: 0,
-                                    trail: Vec::new(),
+                                    trail: ball.trail.clone(), // Copy parent's trail
                                     inside_portals: Vec::new(),
                                 });
                             }
