@@ -1063,9 +1063,16 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                 {
                     if state.effects.shield_active && !shield_used {
                         // Shield saves the ball! Bounce it away
-                        let outward = ball.pos.normalize_or_zero();
+                        // Use velocity direction if position is too close to center
+                        let outward = if ball.pos.length() > 1.0 {
+                            ball.pos.normalize()
+                        } else if ball.vel.length() > 1.0 {
+                            -ball.vel.normalize() // Bounce opposite to velocity
+                        } else {
+                            Vec2::new(0.0, -1.0) // Default: shoot downward toward paddle
+                        };
                         ball.vel = outward * BALL_MAX_SPEED * 0.8;
-                        ball.pos = outward * (BLACK_HOLE_LOSS_RADIUS + ball.radius + 5.0);
+                        ball.pos = outward * (BLACK_HOLE_LOSS_RADIUS + ball.radius + 10.0);
                         shield_used = true;
                         state.screen_shake = (state.screen_shake + 0.5).min(1.0);
                     } else {
