@@ -3,6 +3,10 @@ target = "index.html"
 dist = "dist"
 release = false
 
+# Skip wasm-opt to avoid bulk-memory validation errors
+[tools]
+wasm_opt = "Off"
+
 [watch]
 ignore = ["dist", "target"]
 
