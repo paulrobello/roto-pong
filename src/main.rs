@@ -535,7 +535,7 @@ mod wasm_game {
                 if g.pointer_locked {
                     // Pointer locked: use relative movement
                     let sensitivity = 0.075; // Radians per pixel
-                    let delta = event.movement_x() as f32 * sensitivity;
+                    let delta = -event.movement_x() as f32 * sensitivity; // Negated for correct direction
                     let current = g.state.paddle.theta;
                     g.input.target_theta = Some(current + delta);
                 } else {
