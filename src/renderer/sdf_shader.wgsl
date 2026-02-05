@@ -19,9 +19,9 @@ struct Globals {
     block_count: u32,
     trail_count: u32,
     particle_count: u32,
-    camera_pos: vec2<f32>,
-    camera_zoom: f32,
-    _pad: u32,
+    _pad1: u32,
+    _pad2: u32,
+    _pad3: u32,
 }
 
 struct Paddle {
@@ -227,18 +227,16 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Convert UV to game coordinates with camera
+    // Convert UV to game coordinates
     let aspect = globals.resolution.x / globals.resolution.y;
-    var p = in.uv * globals.arena_radius * 1.1 * globals.camera_zoom;
+    var p = in.uv * globals.arena_radius * 1.1;
     if (aspect > 1.0) {
         p.x *= aspect;
     } else {
         p.y /= aspect;
     }
-    // Apply camera offset
-    p = p + globals.camera_pos;
     
-    // p_dist is the camera-transformed position for rendering
+    // No distortion - keep it clean
     let p_dist = p;
     
     // Start with dark background
@@ -587,47 +585,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let core_mask = 1.0 - smoothstep(-aa, aa, core_d);
         let core_color = mix(part_color, vec3<f32>(1.0, 1.0, 1.0), 0.7);
         color = mix(color, core_color * (1.0 + part.life * 0.5), core_mask * part.life);
-    }
-    
-    // Paddle indicator when off-screen
-    // Calculate paddle center in world space
-    let paddle_world = vec2<f32>(cos(paddle.theta), sin(paddle.theta)) * paddle.radius;
-    // Transform to screen space (UV coordinates)
-    var paddle_screen = (paddle_world - globals.camera_pos) / (globals.arena_radius * 1.1 * globals.camera_zoom);
-    if (aspect > 1.0) {
-        paddle_screen.x /= aspect;
-    } else {
-        paddle_screen.y *= aspect;
-    }
-    
-    // Check if paddle is off-screen (outside [-0.9, 0.9] range)
-    let screen_margin = 0.85;
-    let paddle_off_screen = abs(paddle_screen.x) > screen_margin || abs(paddle_screen.y) > screen_margin;
-    
-    if (paddle_off_screen) {
-        // Clamp to screen edge for indicator position
-        let indicator_pos = normalize(paddle_screen) * screen_margin;
-        let indicator_dist = length(in.uv - indicator_pos);
-        
-        // Mini paddle arc indicator
-        let to_indicator = in.uv - indicator_pos;
-        let ind_angle = atan2(to_indicator.y, to_indicator.x);
-        let paddle_dir = atan2(paddle_screen.y, paddle_screen.x);
-        
-        // Draw a small arc showing paddle orientation
-        var angle_from_paddle = ind_angle - paddle.theta;
-        angle_from_paddle = angle_from_paddle - round(angle_from_paddle / TAU) * TAU;
-        let in_paddle_arc = abs(angle_from_paddle) < paddle.arc_width * 0.5;
-        
-        // Indicator: small glowing dot with arc hint
-        let ind_glow = exp(-indicator_dist * 30.0) * 0.6;
-        let ind_color = vec3<f32>(0.2, 0.9, 0.5); // Green like paddle
-        color += ind_color * ind_glow;
-        
-        // Arc visualization
-        if (indicator_dist < 0.08 && indicator_dist > 0.04 && in_paddle_arc) {
-            color = mix(color, ind_color * 1.5, 0.7);
-        }
     }
     
     // Vignette

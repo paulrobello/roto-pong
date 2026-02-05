@@ -32,10 +32,7 @@ struct Globals {
     block_count: u32,
     trail_count: u32,
     particle_count: u32,
-    // Camera
-    camera_pos: [f32; 2],
-    camera_zoom: f32,
-    _pad: u32,
+    _pad: [u32; 3], // Pad to 16-byte alignment
 }
 
 #[repr(C)]
@@ -111,10 +108,6 @@ pub struct SdfRenderState {
     
     pub size: (u32, u32),
     start_time: f64,
-    
-    // Camera state (smooth follow)
-    camera_pos: [f32; 2],
-    camera_zoom: f32,
 }
 
 impl SdfRenderState {
@@ -174,9 +167,7 @@ impl SdfRenderState {
                 block_count: 0,
                 trail_count: 0,
                 particle_count: 0,
-                camera_pos: [0.0, 0.0],
-                camera_zoom: 1.0,
-                _pad: 0,
+                _pad: [0; 3],
             }),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
@@ -368,8 +359,6 @@ impl SdfRenderState {
             bind_group,
             size: (width, height),
             start_time: 0.0,
-            camera_pos: [0.0, 0.0],
-            camera_zoom: 1.0,
         }
     }
 
@@ -396,26 +385,6 @@ impl SdfRenderState {
         let trail_count = state.balls.iter().map(|b| b.trail.len()).sum::<usize>().min(MAX_TRAIL) as u32;
         let particle_count = state.particles.len().min(MAX_PARTICLES) as u32;
 
-        // Camera: smooth follow on ball position
-        let dt = 1.0 / 60.0; // Approximate dt for smoothing
-        let smooth_speed = 3.0; // Higher = snappier follow
-        
-        // Find target: first free ball, or center if no balls
-        let target_pos = state.balls.iter()
-            .find(|b| matches!(b.state, crate::sim::BallState::Free | crate::sim::BallState::Dying { .. }))
-            .map(|b| [b.pos.x, b.pos.y])
-            .unwrap_or([0.0, 0.0]);
-        
-        // Smooth interpolation toward target
-        self.camera_pos[0] += (target_pos[0] - self.camera_pos[0]) * smooth_speed * dt;
-        self.camera_pos[1] += (target_pos[1] - self.camera_pos[1]) * smooth_speed * dt;
-        
-        // Zoom: closer to center = more zoomed in, farther = zoomed out
-        let ball_dist = (target_pos[0] * target_pos[0] + target_pos[1] * target_pos[1]).sqrt();
-        let target_zoom = 1.0 + (ball_dist / ARENA_OUTER_RADIUS) * 0.5; // 1.0 at center, 1.5 at edge
-        self.camera_zoom += (target_zoom - self.camera_zoom) * smooth_speed * dt;
-        self.camera_zoom = self.camera_zoom.clamp(0.8, 2.0);
-
         // Update globals
         let globals = Globals {
             resolution: [self.size.0 as f32, self.size.1 as f32],
@@ -426,9 +395,7 @@ impl SdfRenderState {
             block_count,
             trail_count,
             particle_count,
-            camera_pos: self.camera_pos,
-            camera_zoom: self.camera_zoom,
-            _pad: 0,
+            _pad: [0; 3],
         };
         self.queue.write_buffer(&self.globals_buffer, 0, bytemuck::bytes_of(&globals));
 
