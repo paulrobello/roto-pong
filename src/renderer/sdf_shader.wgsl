@@ -670,19 +670,30 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         else if (part.color_u == 100u) { part_color = vec3<f32>(1.0, 0.85, 0.2); } // Wave clear - gold
         else if (part.color_u == 101u) { part_color = vec3<f32>(1.0, 1.0, 0.95); } // Wave clear - white
         
-        // BIG outer glow
-        let outer_glow = exp(-max(d, 0.0) * 0.15) * part.life * 0.8;
-        color += part_color * outer_glow;
-        
-        // Inner glow (tighter)
-        let inner_glow = exp(-max(d, 0.0) * 0.4) * part.life * 0.4;
-        color += vec3<f32>(1.0, 1.0, 1.0) * inner_glow;
-        
-        // Hot white core
-        let core_d = d + part.size * 0.5; // Smaller core
-        let core_mask = 1.0 - smoothstep(-aa, aa, core_d);
-        let core_color = mix(part_color, vec3<f32>(1.0, 1.0, 1.0), 0.7);
-        color = mix(color, core_color * (1.0 + part.life * 0.5), core_mask * part.life);
+        // Different rendering for paddle sparks (sharper) vs regular particles (glowy)
+        if (part.color_u == 99u) {
+            // 🔥 SHARP paddle sparks - minimal glow, hard edges
+            let spark_core = 1.0 - smoothstep(-aa * 0.5, aa * 0.5, d);
+            color += part_color * spark_core * part.life * 1.5;
+            // Tiny bright center
+            let center_d = d + part.size * 0.3;
+            let center_mask = 1.0 - smoothstep(-aa * 0.3, aa * 0.3, center_d);
+            color = mix(color, vec3<f32>(1.0, 1.0, 1.0), center_mask * part.life);
+        } else {
+            // Regular particles - glowy
+            let outer_glow = exp(-max(d, 0.0) * 0.15) * part.life * 0.8;
+            color += part_color * outer_glow;
+            
+            // Inner glow (tighter)
+            let inner_glow = exp(-max(d, 0.0) * 0.4) * part.life * 0.4;
+            color += vec3<f32>(1.0, 1.0, 1.0) * inner_glow;
+            
+            // Hot white core
+            let core_d = d + part.size * 0.5;
+            let core_mask = 1.0 - smoothstep(-aa, aa, core_d);
+            let core_color = mix(part_color, vec3<f32>(1.0, 1.0, 1.0), 0.7);
+            color = mix(color, core_color * (1.0 + part.life * 0.5), core_mask * part.life);
+        }
     }
     
     // Pickups! 💊 Power-ups with sexy particle effects!
