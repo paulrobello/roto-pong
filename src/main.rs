@@ -16,6 +16,40 @@ mod wasm_game {
     use roto_pong::renderer::SdfRenderState;
     use roto_pong::sim::{GameState, TickInput, tick};
 
+    // JS binding for pointer lock
+    #[wasm_bindgen(inline_js = "
+        export function request_pointer_lock() {
+            const canvas = document.getElementById('canvas');
+            console.log('request_pointer_lock called, canvas:', canvas);
+            if (canvas) {
+                console.log('Requesting pointer lock...');
+                const result = canvas.requestPointerLock();
+                console.log('requestPointerLock result:', result);
+                if (result && result.then) {
+                    result.then(() => {
+                        console.log('Pointer lock promise resolved');
+                        console.log('pointerLockElement:', document.pointerLockElement);
+                        console.log('Is canvas locked?', document.pointerLockElement === canvas);
+                    }).catch(e => console.error('Pointer lock failed:', e));
+                }
+                // Also check immediately
+                setTimeout(() => {
+                    console.log('After 100ms - pointerLockElement:', document.pointerLockElement);
+                }, 100);
+            }
+        }
+        
+        export function check_pointer_lock() {
+            const el = document.pointerLockElement;
+            console.log('Current pointerLockElement:', el);
+            return el !== null;
+        }
+    ")]
+    extern "C" {
+        fn request_pointer_lock();
+        fn check_pointer_lock() -> bool;
+    }
+
     /// Game instance holding all state
     struct Game {
         state: GameState,
@@ -30,6 +64,8 @@ mod wasm_game {
         fps: u32,
         // Track phase for auto-save
         last_phase: roto_pong::sim::GamePhase,
+        // Pointer lock state
+        pointer_locked: bool,
     }
 
     impl Game {
@@ -46,6 +82,7 @@ mod wasm_game {
                 frame_index: 0,
                 fps: 0,
                 last_phase: GamePhase::Serve,
+                pointer_locked: false,
             }
         }
 
@@ -370,28 +407,93 @@ mod wasm_game {
     }
 
     fn setup_input_handlers(canvas: &HtmlCanvasElement, game: Rc<RefCell<Game>>) {
-        // Mouse move
+        // Pointer lock change handler
+        {
+            let game = game.clone();
+            let document = web_sys::window().unwrap().document().unwrap();
+            let closure = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::Event| {
+                let document = web_sys::window().unwrap().document().unwrap();
+                let locked = document.pointer_lock_element().is_some();
+                if locked {
+                    log::info!("Pointer lock ACQUIRED");
+                } else {
+                    log::warn!("Pointer lock RELEASED");
+                }
+                game.borrow_mut().pointer_locked = locked;
+            });
+            let _ = document.add_event_listener_with_callback(
+                "pointerlockchange",
+                closure.as_ref().unchecked_ref(),
+            );
+            closure.forget();
+        }
+        
+        // Visibility change - might cause lock release
+        {
+            let document = web_sys::window().unwrap().document().unwrap();
+            let closure = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::Event| {
+                log::warn!("Visibility changed - this can release pointer lock");
+            });
+            let _ = document.add_event_listener_with_callback(
+                "visibilitychange",
+                closure.as_ref().unchecked_ref(),
+            );
+            closure.forget();
+        }
+
+        // Pointer lock error handler
+        {
+            let document = web_sys::window().unwrap().document().unwrap();
+            let closure = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::Event| {
+                log::error!("Pointer lock error!");
+            });
+            let _ = document.add_event_listener_with_callback(
+                "pointerlockerror",
+                closure.as_ref().unchecked_ref(),
+            );
+            closure.forget();
+        }
+
+        // Mouse move - use movementX when pointer locked, otherwise absolute position
         {
             let game = game.clone();
             let canvas_clone = canvas.clone();
             let closure = Closure::<dyn FnMut(_)>::new(move |event: MouseEvent| {
                 let mut g = game.borrow_mut();
-                let w = canvas_clone.client_width() as f32;
-                let h = canvas_clone.client_height() as f32;
-                g.set_canvas_center(w, h);
-                let angle = g.pos_to_angle(event.offset_x() as f32, event.offset_y() as f32);
-                g.input.target_theta = Some(angle);
+                
+                if g.pointer_locked {
+                    // Pointer locked: use relative movement
+                    let sensitivity = 0.075; // Radians per pixel
+                    let delta = event.movement_x() as f32 * sensitivity;
+                    let current = g.state.paddle.theta;
+                    g.input.target_theta = Some(current + delta);
+                } else {
+                    // Normal mode: use absolute position
+                    let w = canvas_clone.client_width() as f32;
+                    let h = canvas_clone.client_height() as f32;
+                    g.set_canvas_center(w, h);
+                    let angle = g.pos_to_angle(event.offset_x() as f32, event.offset_y() as f32);
+                    g.input.target_theta = Some(angle);
+                }
             });
             let _ = canvas
                 .add_event_listener_with_callback("mousemove", closure.as_ref().unchecked_ref());
             closure.forget();
         }
 
-        // Mouse click (launch)
+        // Mouse click - request pointer lock and launch
         {
             let game = game.clone();
+            let canvas_clone = canvas.clone();
             let closure = Closure::<dyn FnMut(_)>::new(move |_event: MouseEvent| {
-                game.borrow_mut().input.launch = true;
+                let mut g = game.borrow_mut();
+                g.input.launch = true;
+                
+                // Request pointer lock if not already locked
+                if !g.pointer_locked {
+                    drop(g); // Release borrow before async call
+                    request_pointer_lock();
+                }
             });
             let _ = canvas
                 .add_event_listener_with_callback("mousedown", closure.as_ref().unchecked_ref());

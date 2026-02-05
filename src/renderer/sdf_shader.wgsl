@@ -11,17 +11,18 @@ const MAX_TRAIL: u32 = 32u;
 const MAX_PARTICLES: u32 = 256u;
 
 struct Globals {
-    resolution: vec2<f32>,
-    time: f32,
-    arena_radius: f32,
-    black_hole_radius: f32,
-    ball_count: u32,
-    block_count: u32,
-    trail_count: u32,
-    particle_count: u32,
-    _pad1: u32,
-    _pad2: u32,
-    _pad3: u32,
+    resolution: vec2<f32>,   // offset 0
+    time: f32,               // offset 8
+    arena_radius: f32,       // offset 12
+    black_hole_radius: f32,  // offset 16
+    ball_count: u32,         // offset 20
+    block_count: u32,        // offset 24
+    trail_count: u32,        // offset 28
+    particle_count: u32,     // offset 32
+    _pad1: u32,              // offset 36
+    camera_pos: vec2<f32>,   // offset 40 (8-byte aligned)
+    camera_zoom: f32,        // offset 48
+    _pad2: u32,              // offset 52
 }
 
 struct Paddle {
@@ -227,16 +228,19 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Convert UV to game coordinates
+    // Convert UV to game coordinates with camera
     let aspect = globals.resolution.x / globals.resolution.y;
-    var p = in.uv * globals.arena_radius * 1.1;
+    var p = in.uv * globals.arena_radius * 1.1 * globals.camera_zoom;
     if (aspect > 1.0) {
         p.x *= aspect;
     } else {
         p.y /= aspect;
     }
     
-    // No distortion - keep it clean
+    // Apply camera offset (add to center view on camera position)
+    p = p + globals.camera_pos;
+    
+    // p_dist is the camera-transformed position for rendering
     let p_dist = p;
     
     // Start with dark background

@@ -24,15 +24,18 @@ const MAX_PARTICLES: usize = 256;
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
 struct Globals {
-    resolution: [f32; 2],
-    time: f32,
-    arena_radius: f32,
-    black_hole_radius: f32,
-    ball_count: u32,
-    block_count: u32,
-    trail_count: u32,
-    particle_count: u32,
-    _pad: [u32; 3], // Pad to 16-byte alignment
+    resolution: [f32; 2],   // offset 0
+    time: f32,              // offset 8
+    arena_radius: f32,      // offset 12
+    black_hole_radius: f32, // offset 16
+    ball_count: u32,        // offset 20
+    block_count: u32,       // offset 24
+    trail_count: u32,       // offset 28
+    particle_count: u32,    // offset 32
+    _pad1: u32,             // offset 36 - align camera_pos to 8 bytes
+    camera_pos: [f32; 2],   // offset 40 (8-byte aligned for WGSL vec2)
+    camera_zoom: f32,       // offset 48
+    _pad2: u32,             // offset 52 - pad to 56 bytes (8-byte multiple)
 }
 
 #[repr(C)]
@@ -108,6 +111,10 @@ pub struct SdfRenderState {
     
     pub size: (u32, u32),
     start_time: f64,
+    
+    // Camera state
+    camera_pos: [f32; 2],
+    camera_zoom: f32,
 }
 
 impl SdfRenderState {
@@ -167,7 +174,10 @@ impl SdfRenderState {
                 block_count: 0,
                 trail_count: 0,
                 particle_count: 0,
-                _pad: [0; 3],
+                _pad1: 0,
+                camera_pos: [0.0, 0.0],
+                camera_zoom: 1.0,
+                _pad2: 0,
             }),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
@@ -359,6 +369,8 @@ impl SdfRenderState {
             bind_group,
             size: (width, height),
             start_time: 0.0,
+            camera_pos: [0.0, 0.0],
+            camera_zoom: 1.0,
         }
     }
 
@@ -385,6 +397,45 @@ impl SdfRenderState {
         let trail_count = state.balls.iter().map(|b| b.trail.len()).sum::<usize>().min(MAX_TRAIL) as u32;
         let particle_count = state.particles.len().min(MAX_PARTICLES) as u32;
 
+        // Camera follow - enabled when arena is larger than base viewport
+        // Base viewport shows ~440px radius (ARENA_OUTER_RADIUS * 1.1)
+        // Enable camera when arena extends beyond this
+        let base_viewport = 440.0;
+        let camera_enabled = ARENA_OUTER_RADIUS > base_viewport;
+        
+        if camera_enabled {
+            let dt = 1.0 / 60.0;
+            let pos_smooth = 3.0;
+            let zoom_smooth = 1.0;
+            
+            // Find active ball position
+            let target_pos = state.balls.iter()
+                .find(|b| matches!(b.state, crate::sim::BallState::Free | crate::sim::BallState::Dying { .. }))
+                .map(|b| [b.pos.x, b.pos.y])
+                .unwrap_or([0.0, 0.0]);
+            
+            // Smooth interpolation toward ball
+            self.camera_pos[0] += (target_pos[0] - self.camera_pos[0]) * pos_smooth * dt;
+            self.camera_pos[1] += (target_pos[1] - self.camera_pos[1]) * pos_smooth * dt;
+            
+            // Zoom to keep both ball and black hole visible with 20% padding
+            let viewport_base = base_viewport * 0.8;
+            let camera_dist = (self.camera_pos[0].powi(2) + self.camera_pos[1].powi(2)).sqrt();
+            
+            let target_zoom = if camera_dist <= viewport_base {
+                1.0
+            } else {
+                camera_dist / viewport_base
+            };
+            
+            self.camera_zoom += (target_zoom - self.camera_zoom) * zoom_smooth * dt;
+            self.camera_zoom = self.camera_zoom.clamp(1.0, 2.0);
+        } else {
+            // Arena fits on screen - keep centered
+            self.camera_pos = [0.0, 0.0];
+            self.camera_zoom = 1.0;
+        }
+
         // Update globals
         let globals = Globals {
             resolution: [self.size.0 as f32, self.size.1 as f32],
@@ -395,7 +446,10 @@ impl SdfRenderState {
             block_count,
             trail_count,
             particle_count,
-            _pad: [0; 3],
+            _pad1: 0,
+            camera_pos: self.camera_pos,
+            camera_zoom: self.camera_zoom,
+            _pad2: 0,
         };
         self.queue.write_buffer(&self.globals_buffer, 0, bytemuck::bytes_of(&globals));
 

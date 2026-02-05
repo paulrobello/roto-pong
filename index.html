@@ -368,6 +368,29 @@
         </div>
     </div>
     <script type="module">
+        // Set up pointer lock on canvas click (must be direct user gesture)
+        document.addEventListener('DOMContentLoaded', () => {
+            const canvas = document.getElementById('canvas');
+            if (canvas) {
+                canvas.addEventListener('click', async (e) => {
+                    if (!document.pointerLockElement) {
+                        try {
+                            await canvas.requestPointerLock({ unadjustedMovement: true });
+                            console.log('Pointer lock requested with unadjustedMovement');
+                        } catch (err) {
+                            // Fallback without unadjustedMovement
+                            try {
+                                await canvas.requestPointerLock();
+                                console.log('Pointer lock requested (standard)');
+                            } catch (err2) {
+                                console.error('Pointer lock failed:', err2);
+                            }
+                        }
+                    }
+                });
+            }
+        });
+        
         // Check WebGPU support before WASM loads
         async function checkWebGPU() {
             if (!navigator.gpu) {

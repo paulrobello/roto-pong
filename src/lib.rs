@@ -31,7 +31,7 @@ pub mod consts {
     /// Paddle defaults - paddle orbits INSIDE, defending the black hole
     pub const PADDLE_RADIUS: f32 = 47.5; // Back edge at event horizon (40 + 15/2)
     pub const PADDLE_THICKNESS: f32 = 15.0;
-    pub const PADDLE_ARC_WIDTH: f32 = 1.1; // radians (~63 degrees) - 10% bigger
+    pub const PADDLE_ARC_WIDTH: f32 = 1.21; // radians (~69 degrees) - another 10% bigger
 
     /// Ball defaults
     pub const BALL_RADIUS: f32 = 8.0;
