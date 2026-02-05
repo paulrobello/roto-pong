@@ -1029,10 +1029,18 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                 PADDLE_ARC_WIDTH
             };
             
-            // Springy interpolation toward target width
-            let spring_speed = 8.0; // How fast it springs
+            // Spring-damper physics for bouncy overshoot
+            let spring_k = 150.0;  // Spring stiffness (higher = faster)
+            let damping = 8.0;     // Damping (lower = more bouncy/overshoot)
             let diff = target_width - state.paddle.arc_width;
-            state.paddle.arc_width += diff * spring_speed * dt;
+            
+            // F = -kx - bv (spring force - damping force)
+            let spring_force = spring_k * diff;
+            let damping_force = damping * state.paddle.arc_width_vel;
+            let acceleration = spring_force - damping_force;
+            
+            state.paddle.arc_width_vel += acceleration * dt;
+            state.paddle.arc_width += state.paddle.arc_width_vel * dt;
 
             // Apply slow effect - reduce ball speed by 40%
             if state.effects.slow_ticks > 0 {

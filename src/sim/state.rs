@@ -150,6 +150,9 @@ pub struct Paddle {
     pub arc_width: f32,
     /// Angular velocity (for "english" on ball)
     pub angular_vel: f32,
+    /// Velocity of arc_width for springy resize
+    #[serde(default)]
+    pub arc_width_vel: f32,
 }
 
 impl Default for Paddle {
@@ -158,6 +161,7 @@ impl Default for Paddle {
             theta: -std::f32::consts::FRAC_PI_2, // Start at bottom
             arc_width: PADDLE_ARC_WIDTH,
             angular_vel: 0.0,
+            arc_width_vel: 0.0,
         }
     }
 }
