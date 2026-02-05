@@ -26,7 +26,9 @@ struct Globals {
     pickup_count: u32,       // offset 56
     shield_active: u32,      // offset 60
     wave_flash: f32,         // offset 64 - wave clear flash
-    _pad2: vec3<u32>,        // offset 68 - padding to 80 bytes
+    _pad2a: u32,             // offset 68
+    _pad2b: u32,             // offset 72
+    _pad2c: u32,             // offset 76 - total 80 bytes
 }
 
 struct Paddle {
