@@ -1311,16 +1311,15 @@ pub fn arena_radius_for_wave(wave: u32) -> f32 {
 /// Generate wave with variable blocks, widths, and layers
 pub fn generate_wave(state: &mut GameState) {
     use super::arc::ArcSegment;
-    use super::state::{Block, BlockKind, BASE_ARENA_RADIUS};
+    use super::state::{Block, BlockKind, LAYER_SPACING, WALL_MARGIN, INNER_MARGIN};
     use std::f32::consts::PI;
 
     let wave = state.wave_index;
 
     // Update arena radius for this wave
-    state.arena_radius = arena_radius_for_wave(wave);
-    
-    // Scale factor for positioning (1.0 at base, increases as arena grows)
-    let scale = state.arena_radius / BASE_ARENA_RADIUS;
+    let new_radius = arena_radius_for_wave(wave);
+    log::info!("Wave {} arena radius: {} -> {}", wave, state.arena_radius, new_radius);
+    state.arena_radius = new_radius;
 
     // Deterministic "randomness" based on wave number AND game seed
     // This gives variety between runs while keeping determinism within a run
@@ -1328,23 +1327,31 @@ pub fn generate_wave(state: &mut GameState) {
         .wrapping_mul(2654435761)
         .wrapping_add(state.seed)) as u32;
 
-    // Number of layers increases with wave (1-4 layers, then 5 for huge arenas)
-    let base_layers = 1 + (wave / 3).min(3);
-    let num_layers = if state.arena_radius > 550.0 { base_layers + 1 } else { base_layers };
+    // Calculate layer radii dynamically based on arena size
+    // Layers go from outer (near wall) to inner (near black hole)
+    // More space = more layers!
+    let outer_radius = state.arena_radius - WALL_MARGIN;  // Start 25px from wall
+    let inner_radius = INNER_MARGIN;  // Stop 120px from center (above paddle)
+    let available_space = outer_radius - inner_radius;
+    
+    // Calculate how many layers can fit
+    let max_possible_layers = (available_space / LAYER_SPACING).floor() as u32;
+    
+    // Number of layers based on wave (start with fewer, add more)
+    let desired_layers = 1 + (wave / 2).min(max_possible_layers);
+    let num_layers = desired_layers.min(max_possible_layers).max(1);
+    
+    log::info!("Wave {}: arena={}, space={}, layers={}", wave, state.arena_radius, available_space, num_layers);
 
-    // Layer radii from outer to inner - scaled by arena size
-    // Base radii at 400 arena: [375, 320, 265, 210, 155]
-    let base_radii = [375.0, 320.0, 265.0, 210.0, 155.0];
-    let layer_radii: [f32; 5] = [
-        base_radii[0] * scale,
-        base_radii[1] * scale,
-        base_radii[2] * scale,
-        base_radii[3] * scale,
-        base_radii[4] * scale,
-    ];
+    // Generate layer radii from outer to inner
+    let mut layer_radii = Vec::with_capacity(num_layers as usize);
+    for i in 0..num_layers {
+        let radius = outer_radius - (i as f32 * LAYER_SPACING);
+        layer_radii.push(radius);
+    }
 
-    for layer in 0..num_layers {
-        let radius = layer_radii[layer as usize];
+    for (layer, &radius) in layer_radii.iter().enumerate() {
+        let layer = layer as u32;
         let layer_seed = wave_seed.wrapping_add(layer * 1000);
 
         // More blocks in outer layers, fewer in inner

@@ -18,5 +18,6 @@ pub use sdf::{check_sdf_collision, raymarch_collision, reflect, sd_arc, sd_arena
 pub use state::{
     Ball, BallState, Block, BlockKind, GamePhase, GameState, Paddle, PickupKind,
     BASE_ARENA_RADIUS, MAX_ARENA_RADIUS, ARENA_GROWTH_PER_WAVE, ARENA_GROWTH_START_WAVE,
+    LAYER_SPACING, WALL_MARGIN, INNER_MARGIN,
 };
 pub use tick::{TickInput, generate_wave, tick};

@@ -322,11 +322,17 @@ impl RngState {
 /// Base arena radius
 pub const BASE_ARENA_RADIUS: f32 = 400.0;
 /// Maximum arena radius (grows with waves)
-pub const MAX_ARENA_RADIUS: f32 = 650.0;
-/// Arena growth per wave
-pub const ARENA_GROWTH_PER_WAVE: f32 = 8.0;
+pub const MAX_ARENA_RADIUS: f32 = 700.0;
+/// Arena growth per wave (more aggressive to add new block rings)
+pub const ARENA_GROWTH_PER_WAVE: f32 = 20.0;
 /// Wave at which arena starts growing
 pub const ARENA_GROWTH_START_WAVE: u32 = 5;
+/// Spacing between block layers
+pub const LAYER_SPACING: f32 = 55.0;
+/// Minimum distance from wall for outermost blocks
+pub const WALL_MARGIN: f32 = 25.0;
+/// Minimum distance from black hole for innermost blocks
+pub const INNER_MARGIN: f32 = 120.0;
 
 /// Complete game state (deterministic, serializable)
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -248,8 +248,10 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Convert UV to game coordinates with camera
+    // Use fixed base viewport (440 = 400 * 1.1) and camera_zoom handles larger arenas
     let aspect = globals.resolution.x / globals.resolution.y;
-    var p = in.uv * globals.arena_radius * 1.1 * globals.camera_zoom;
+    let base_viewport = 440.0; // Fixed: base arena (400) * 1.1 padding
+    var p = in.uv * base_viewport * globals.camera_zoom;
     if (aspect > 1.0) {
         p.x *= aspect;
     } else {
