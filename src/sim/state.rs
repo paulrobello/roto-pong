@@ -57,7 +57,7 @@ pub struct TrailPoint {
 }
 
 /// Maximum number of trail points to store
-pub const TRAIL_LENGTH: usize = 20;
+pub const TRAIL_LENGTH: usize = 40;
 
 /// A ball entity
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -78,6 +78,9 @@ pub struct Ball {
     /// Trail history for rendering (newest first)
     #[serde(skip)]
     pub trail: Vec<TrailPoint>,
+    /// Electric charge (0.0 = none, 1.0 = fully charged, decays over ~3 seconds)
+    #[serde(default)]
+    pub electric_charge: f32,
 }
 
 impl Ball {
@@ -92,6 +95,7 @@ impl Ball {
             paddle_cooldown: 0,
             inside_portals: Vec::new(),
             trail: Vec::with_capacity(TRAIL_LENGTH),
+            electric_charge: 0.0,
         }
     }
 
@@ -207,14 +211,18 @@ pub enum BlockKind {
     Armored,
     Explosive,
     Invincible, // Cannot be destroyed, doesn't count for wave clear
-    Prism,
     Portal {
         pair_id: u32,
     },
     Jello, // Wobbly block that ripples when hit
-    Pulse,
+    /// Prismatic crystal - rainbow refraction effect, shatters into sparkles
+    Crystal,
+    /// Electric - arcs between nearby electric blocks, speed boost on hit
+    Electric,
+    /// Magnet - pulls ball toward it
     Magnet,
-    PowerUpCapsule,
+    /// Ghost - fades in/out, only hittable when visible
+    Ghost,
 }
 
 /// A block entity (curved arc)
@@ -230,11 +238,24 @@ pub struct Block {
     /// Wobble intensity (0-1, decays over time) for Jello blocks
     #[serde(default)]
     pub wobble: f32,
+    /// Ghost block visibility (0.0 = invisible, 1.0 = visible)
+    #[serde(default = "default_visibility")]
+    pub visibility: f32,
+    /// Ghost phase offset (for staggered fading)
+    #[serde(default)]
+    pub ghost_phase: f32,
+    /// Ring/layer index (for electric arc connections)
+    #[serde(default)]
+    pub ring_id: u32,
+}
+
+fn default_visibility() -> f32 {
+    1.0
 }
 
 impl Block {
-    /// Rotate the block by its rotation speed * dt, decay wobble
-    pub fn rotate(&mut self, dt: f32) {
+    /// Rotate the block by its rotation speed * dt, decay wobble, update ghost visibility
+    pub fn rotate(&mut self, dt: f32, time: f32) {
         if self.rotation_speed != 0.0 {
             let delta = self.rotation_speed * dt;
             self.arc.theta_start = normalize_angle(self.arc.theta_start + delta);
@@ -243,6 +264,22 @@ impl Block {
         // Decay wobble over time (fast decay for snappy feel)
         if self.wobble > 0.0 {
             self.wobble = (self.wobble - dt * 2.0).max(0.0);
+        }
+        // Ghost blocks fade in/out on a cycle
+        if self.kind == BlockKind::Ghost {
+            // Faster sine wave: ~4 second cycle, phase offset for variety
+            let cycle = (time * 1.5 + self.ghost_phase).sin();
+            // Remap from [-1,1] to [0.05, 1] - more ghosty at minimum
+            self.visibility = cycle * 0.475 + 0.525;
+        }
+    }
+
+    /// Check if this ghost block is solid enough to be hit
+    pub fn is_hittable(&self) -> bool {
+        if self.kind == BlockKind::Ghost {
+            self.visibility > 0.5 // Only hittable when more than 50% visible
+        } else {
+            true
         }
     }
 

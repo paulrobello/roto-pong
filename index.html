@@ -438,7 +438,7 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: linear-gradient(135deg, rgba(10, 10, 20, 0.95), rgba(20, 10, 40, 0.95));
+            background: radial-gradient(ellipse at center, rgba(20, 10, 40, 0.98) 0%, rgba(5, 5, 15, 0.99) 70%);
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -446,64 +446,155 @@
             font-family: system-ui, sans-serif;
             color: #fff;
             z-index: 30;
+            overflow: hidden;
+        }
+        #main-menu::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 600px;
+            height: 600px;
+            transform: translate(-50%, -50%);
+            background: radial-gradient(circle, rgba(139, 92, 246, 0.15) 0%, rgba(236, 72, 153, 0.1) 30%, transparent 70%);
+            animation: pulse-bg 4s ease-in-out infinite;
+            pointer-events: none;
+        }
+        #main-menu::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 300px;
+            height: 300px;
+            transform: translate(-50%, -50%);
+            border: 2px solid rgba(139, 92, 246, 0.2);
+            border-radius: 50%;
+            animation: ring-rotate 20s linear infinite;
+            pointer-events: none;
+        }
+        @keyframes pulse-bg {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.5; }
+            50% { transform: translate(-50%, -50%) scale(1.1); opacity: 0.8; }
+        }
+        @keyframes ring-rotate {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
         }
         #main-menu.hidden { display: none; }
         .menu-title {
-            font-size: 4rem;
-            font-weight: bold;
-            background: linear-gradient(135deg, #60a5fa, #c084fc, #f472b6);
+            font-size: 4.5rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 25%, #f472b6 50%, #fb923c 75%, #60a5fa 100%);
+            background-size: 200% 200%;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
             margin-bottom: 0.5rem;
             text-shadow: none;
-            animation: title-glow 2s ease-in-out infinite alternate;
+            animation: title-glow 2s ease-in-out infinite alternate, gradient-shift 4s ease infinite;
+            letter-spacing: 0.1em;
+            position: relative;
+            z-index: 1;
         }
         @keyframes title-glow {
-            0% { filter: drop-shadow(0 0 20px rgba(96, 165, 250, 0.5)); }
-            100% { filter: drop-shadow(0 0 30px rgba(192, 132, 252, 0.7)); }
+            0% { filter: drop-shadow(0 0 20px rgba(96, 165, 250, 0.6)) drop-shadow(0 0 40px rgba(139, 92, 246, 0.3)); }
+            100% { filter: drop-shadow(0 0 30px rgba(244, 114, 182, 0.7)) drop-shadow(0 0 60px rgba(251, 146, 60, 0.4)); }
+        }
+        @keyframes gradient-shift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+        .title-blackhole {
+            display: inline-block;
+            vertical-align: middle;
+            margin: 0 -0.05em;
+            position: relative;
+            top: -5px;
+            filter: drop-shadow(0 0 10px rgba(255, 100, 0, 0.8));
+            animation: bh-pulse 2s ease-in-out infinite;
+        }
+        @keyframes bh-pulse {
+            0%, 100% { filter: drop-shadow(0 0 10px rgba(255, 100, 0, 0.8)); }
+            50% { filter: drop-shadow(0 0 20px rgba(255, 140, 0, 1)); }
         }
         .menu-subtitle {
-            font-size: 1rem;
-            color: #94a3b8;
-            margin-bottom: 2rem;
-            letter-spacing: 0.2em;
+            font-size: 1.1rem;
+            color: #a5b4fc;
+            margin-bottom: 2.5rem;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            position: relative;
+            z-index: 1;
+            animation: float 3s ease-in-out infinite;
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
         }
         .menu-buttons {
             display: flex;
             flex-direction: column;
-            gap: 0.75rem;
+            gap: 0.85rem;
             margin-bottom: 2rem;
+            position: relative;
+            z-index: 1;
         }
         .menu-buttons button {
             padding: 1rem 2.5rem;
             font-size: 1.1rem;
-            background: rgba(255, 255, 255, 0.1);
+            font-weight: 600;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
             color: #fff;
-            border: 2px solid rgba(255, 255, 255, 0.2);
-            border-radius: 0.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
             cursor: pointer;
-            min-width: 220px;
-            transition: all 0.2s;
+            min-width: 240px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        .menu-buttons button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+            transition: left 0.5s;
+        }
+        .menu-buttons button:hover::before {
+            left: 100%;
         }
         .menu-buttons button:hover {
-            background: rgba(255, 255, 255, 0.2);
-            border-color: rgba(255, 255, 255, 0.4);
-            transform: translateY(-2px);
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(167, 139, 250, 0.5);
+            transform: translateY(-3px) scale(1.02);
+            box-shadow: 0 10px 40px rgba(139, 92, 246, 0.3), 0 0 20px rgba(139, 92, 246, 0.2);
         }
         .menu-buttons button.primary {
-            background: #4ade80;
+            background: linear-gradient(135deg, #4ade80 0%, #22d3ee 100%);
             color: #000;
-            border-color: #4ade80;
+            border: none;
+            font-weight: 700;
+            box-shadow: 0 4px 20px rgba(74, 222, 128, 0.3);
         }
         .menu-buttons button.primary:hover {
-            background: #22c55e;
-            border-color: #22c55e;
+            background: linear-gradient(135deg, #22c55e 0%, #06b6d4 100%);
+            transform: translateY(-3px) scale(1.05);
+            box-shadow: 0 10px 40px rgba(74, 222, 128, 0.5), 0 0 30px rgba(34, 211, 238, 0.3);
         }
         .menu-buttons button:disabled {
-            opacity: 0.4;
+            opacity: 0.3;
             cursor: not-allowed;
             transform: none;
+            box-shadow: none;
+        }
+        .menu-buttons button:disabled:hover {
+            transform: none;
+            box-shadow: none;
         }
         .continue-info {
             font-size: 0.85rem;
@@ -513,13 +604,23 @@
         }
         .menu-footer {
             position: absolute;
-            bottom: 1.5rem;
-            font-size: 0.8rem;
-            color: #475569;
+            bottom: 2rem;
+            font-size: 0.85rem;
+            color: #64748b;
+            z-index: 1;
+            padding: 0.5rem 1.5rem;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 20px;
+            backdrop-filter: blur(5px);
         }
         .menu-footer a {
-            color: #60a5fa;
+            color: #a78bfa;
             text-decoration: none;
+            transition: color 0.2s;
+        }
+        .menu-footer a:hover {
+            color: #c4b5fd;
+            text-shadow: 0 0 10px rgba(167, 139, 250, 0.5);
         }
         
         /* High Scores */
@@ -625,58 +726,65 @@
             color: #fff;
             z-index: 35;
             overflow-y: auto;
-            padding: 2rem;
+            padding: 1rem;
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none; /* IE/Edge */
+        }
+        #howtoplay-modal::-webkit-scrollbar {
+            display: none; /* Chrome/Safari */
         }
         #howtoplay-modal.hidden { display: none; }
         #howtoplay-modal h1 {
-            font-size: 2.5rem;
+            font-size: 2rem;
             color: #60a5fa;
-            margin-bottom: 1.5rem;
+            margin-bottom: 1rem;
         }
         .howtoplay-content {
             background: rgba(30, 41, 59, 0.8);
             border-radius: 12px;
-            padding: 1.5rem 2rem;
-            max-width: 500px;
-            width: 90%;
+            padding: 1rem 1.5rem;
+            max-width: 520px;
+            width: 95%;
         }
         .howtoplay-section {
-            margin-bottom: 1.5rem;
+            margin-bottom: 0.8rem;
         }
         .howtoplay-section:last-child {
             margin-bottom: 0;
         }
         .howtoplay-section h3 {
-            font-size: 1rem;
+            font-size: 0.85rem;
             color: #94a3b8;
             text-transform: uppercase;
             letter-spacing: 0.1em;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.4rem;
             border-bottom: 1px solid #334155;
-            padding-bottom: 0.3rem;
+            padding-bottom: 0.2rem;
         }
         .howtoplay-section p {
-            line-height: 1.6;
+            line-height: 1.4;
             color: #e2e8f0;
+            font-size: 0.9rem;
         }
         .control-row {
             display: flex;
             justify-content: space-between;
-            padding: 0.3rem 0;
+            padding: 0.2rem 0;
+            font-size: 0.9rem;
         }
         .control-key {
             background: #475569;
-            padding: 0.2rem 0.6rem;
+            padding: 0.15rem 0.5rem;
             border-radius: 4px;
             font-family: monospace;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
         }
         .howtoplay-actions {
-            margin-top: 1.5rem;
+            margin-top: 1rem;
         }
         .howtoplay-actions button {
-            padding: 0.8rem 2rem;
-            font-size: 1rem;
+            padding: 0.6rem 1.5rem;
+            font-size: 0.95rem;
             background: #4ade80;
             color: #000;
             border: none;
@@ -878,7 +986,7 @@
         
         <!-- Main Menu -->
         <div id="main-menu">
-            <h1 class="menu-title">ROTO PONG</h1>
+            <h1 class="menu-title">ROT<svg class="title-blackhole" viewBox="0 0 100 100" width="0.9em" height="0.9em"><defs><radialGradient id="bh-glow" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#000"/><stop offset="40%" stop-color="#000"/><stop offset="55%" stop-color="#ff6a00"/><stop offset="70%" stop-color="#ff8c00"/><stop offset="85%" stop-color="#ff4500" stop-opacity="0.5"/><stop offset="100%" stop-color="transparent"/></radialGradient></defs><circle cx="50" cy="50" r="48" fill="url(#bh-glow)"/></svg> PONG</h1>
             <p class="menu-subtitle">CIRCULAR ARENA ARCADE</p>
             <div class="menu-buttons">
                 <button id="menu-continue-btn" class="primary" disabled>Continue</button>
@@ -929,9 +1037,17 @@
                 </div>
                 <div class="howtoplay-section">
                     <h3>Block Types</h3>
-                    <p>🟦 Glass - 1 hit | 🔷 Armored - Multiple hits<br>
-                    💥 Explosive - Chain reactions | 🟣 Portal - Slide through<br>
-                    🟩 Jello - Wobbles, 2 hits | ⬜ Invincible - Can't break</p>
+                    <p>🟦 <b>Glass</b> - 1 hit, shatters easily<br>
+                    🔷 <b>Armored</b> - Multiple hits, gold dots show remaining HP<br>
+                    💥 <b>Explosive</b> - Chain reactions damage neighbors!<br>
+                    🟣 <b>Portal</b> - Ball slides through, exits randomly<br>
+                    🟩 <b>Jello</b> - Wobbles when hit, 2 hits to break<br>
+                    ⬜ <b>Invincible</b> - Can't be destroyed<br>
+                    🌈 <b>Crystal</b> - Rainbow prismatic, extra sparkly shatter!<br>
+                    ⚡ <b>Electric</b> - Lightning arcs between neighbors! Hit or pass near arcs for speed boost + electric charge<br>
+                    🧲 <b>Magnet</b> - Red pole attracts, silver pole repels the ball<br>
+                    👻 <b>Ghost</b> - Fades in/out, only hittable when visible<br><br>
+                    💎 <b>Thick blocks</b> contain guaranteed power-ups!</p>
                 </div>
                 <div class="howtoplay-section">
                     <h3>Power-ups</h3>
@@ -940,7 +1056,7 @@
                 </div>
                 <div class="howtoplay-section">
                     <h3>Tips</h3>
-                    <p>Build combos for score multipliers! The ball speeds up when hitting the paddle. Gravity pulls everything toward the black hole.</p>
+                    <p>Build combos for score multipliers! Target thick blocks for power-ups. The ball speeds up on paddle hits. Gravity pulls everything toward the black hole. Every 10th wave is Jello Madness! 🟢</p>
                 </div>
             </div>
             <div class="howtoplay-actions">
@@ -1014,6 +1130,7 @@
                 document.getElementById('loading').textContent = 'Initializing...';
             }
         });
+        
     </script>
 </body>
 </html>

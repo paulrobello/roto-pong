@@ -162,11 +162,14 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
         state.paddle.move_toward(target, dt, max_speed);
     }
 
+    // Time in seconds for animations
+    let time_secs = state.time_ticks as f32 * crate::consts::SIM_DT;
+
     match state.phase {
         GamePhase::Serve => {
             // Rotate blocks even before launch
             for block in &mut state.blocks {
-                block.rotate(dt);
+                block.rotate(dt, time_secs);
             }
 
             // Update attached balls to follow paddle
@@ -198,9 +201,9 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
         }
 
         GamePhase::Playing => {
-            // Rotate blocks
+            // Rotate blocks and update ghost visibility
             for block in &mut state.blocks {
-                block.rotate(dt);
+                block.rotate(dt, time_secs);
             }
 
             // Update sliding balls (portal traversal)
@@ -370,6 +373,66 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                 // Inverse distance scaling: much stronger near the hole
                 let gravity_multiplier = (200.0 / dist_to_center.max(50.0)).min(4.0);
                 ball.vel += to_center * BLACK_HOLE_GRAVITY * gravity_multiplier * dt;
+
+                // Magnet blocks: red end (theta_start) pulls, silver end (theta_end) pushes
+                // Chain detection: only endpoints of adjacent magnet chains have active polarity
+                for block in &state.blocks {
+                    if block.kind == super::state::BlockKind::Magnet {
+                        let block_mid_theta = (block.arc.theta_start + block.arc.theta_end) * 0.5;
+                        let block_center = Vec2::new(block_mid_theta.cos(), block_mid_theta.sin()) * block.arc.radius;
+                        let to_magnet = block_center - ball.pos;
+                        let dist_to_magnet = to_magnet.length();
+                        
+                        if dist_to_magnet > 10.0 && dist_to_magnet < 150.0 {
+                            // Check if this block's ends are connected to other magnets (chain detection)
+                            let angle_tolerance = 0.15; // ~8.5 degrees
+                            let radius_tolerance = 5.0;
+                            
+                            let mut red_end_is_endpoint = true;
+                            let mut silver_end_is_endpoint = true;
+                            
+                            for other in &state.blocks {
+                                if other.id == block.id { continue; }
+                                if other.kind != super::state::BlockKind::Magnet { continue; }
+                                if (other.arc.radius - block.arc.radius).abs() > radius_tolerance { continue; }
+                                
+                                // Check if other's theta_end connects to our theta_start (red end)
+                                let diff_to_red = (other.arc.theta_end - block.arc.theta_start).abs();
+                                let diff_to_red_wrapped = (diff_to_red - std::f32::consts::TAU).abs().min(diff_to_red);
+                                if diff_to_red_wrapped < angle_tolerance {
+                                    red_end_is_endpoint = false;
+                                }
+                                
+                                // Check if other's theta_start connects to our theta_end (silver end)
+                                let diff_to_silver = (other.arc.theta_start - block.arc.theta_end).abs();
+                                let diff_to_silver_wrapped = (diff_to_silver - std::f32::consts::TAU).abs().min(diff_to_silver);
+                                if diff_to_silver_wrapped < angle_tolerance {
+                                    silver_end_is_endpoint = false;
+                                }
+                            }
+                            
+                            // Only apply force if near an active endpoint
+                            let red_end = Vec2::new(block.arc.theta_start.cos(), block.arc.theta_start.sin()) * block.arc.radius;
+                            let silver_end = Vec2::new(block.arc.theta_end.cos(), block.arc.theta_end.sin()) * block.arc.radius;
+                            let dist_to_red = (ball.pos - red_end).length();
+                            let dist_to_silver = (ball.pos - silver_end).length();
+                            
+                            // Base strength, falls off with distance
+                            let strength = 50.0 * (1.0 - dist_to_magnet / 150.0);
+                            
+                            if dist_to_red < dist_to_silver && red_end_is_endpoint {
+                                // Closer to red end AND it's an endpoint: PULL toward red pole
+                                let to_red = (red_end - ball.pos).normalize_or_zero();
+                                ball.vel += to_red * strength * dt;
+                            } else if dist_to_silver <= dist_to_red && silver_end_is_endpoint {
+                                // Closer to silver end AND it's an endpoint: PUSH away from silver pole
+                                let from_silver = (ball.pos - silver_end).normalize_or_zero();
+                                ball.vel += from_silver * strength * dt;
+                            }
+                            // If neither end is an endpoint (middle of chain), no force applied
+                        }
+                    }
+                }
 
                 // Clamp speed to min/max (gravity can slow but not stop the ball)
                 let speed = ball.vel.length();
@@ -587,6 +650,13 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                     for (idx, &(block_id, theta_start, theta_end, radius, thickness, kind)) in
                         block_arcs.iter().enumerate()
                     {
+                        // Ghost blocks: check if visible enough to be hittable
+                        if kind == super::state::BlockKind::Ghost {
+                            if idx < state.blocks.len() && !state.blocks[idx].is_hittable() {
+                                continue; // Ball passes through invisible ghosts
+                            }
+                        }
+
                         let block_dist =
                             super::sdf::sd_arc(ball.pos, theta_start, theta_end, radius, thickness);
                         let inside_block = block_dist < ball.radius;
@@ -691,6 +761,13 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                             {
                                 blocks_to_damage.push(idx);
                                 state.combo += 1;
+
+                                // Electric blocks give speed boost and charge!
+                                if kind == super::state::BlockKind::Electric {
+                                    ball.vel *= 1.25; // 25% speed boost
+                                    ball.electric_charge = 1.0; // Full charge!
+                                    state.screen_shake = (state.screen_shake + 0.15).min(1.0);
+                                }
                             }
                             break; // One collision per substep
                         }
@@ -716,11 +793,21 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                             super::state::BlockKind::Invincible => 3,
                             super::state::BlockKind::Portal { .. } => 4,
                             super::state::BlockKind::Jello => 5,
-                            _ => 0,
+                            super::state::BlockKind::Crystal => 6,
+                            super::state::BlockKind::Electric => 7,
+                            super::state::BlockKind::Magnet => 8,
+                            super::state::BlockKind::Ghost => 9,
+                        };
+
+                        // Crystal blocks shatter with extra sparkles!
+                        let particle_bonus = if block.kind == super::state::BlockKind::Crystal {
+                            20 // Extra sparkle particles
+                        } else {
+                            0
                         };
 
                         // Spawn 20-40 particles - MAKE IT RAIN!
-                        let particle_count = (20.0 + arc_span * 30.0).min(40.0) as usize;
+                        let particle_count = ((20.0 + arc_span * 30.0).min(40.0) as usize) + particle_bonus;
                         let particle_seed = state.time_ticks as u32;
 
                         for i in 0..particle_count {
@@ -766,10 +853,11 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                             });
                         }
 
-                        // PICKUP SPAWN! ~10% chance on block destroy
+                        // PICKUP SPAWN! Thick blocks ALWAYS drop, others ~8% chance
+                        let is_powerup_block = block.arc.thickness > BLOCK_THICKNESS * 1.2;
                         let pickup_hash =
                             particle_seed.wrapping_mul(31337).wrapping_add(idx as u32);
-                        if pickup_hash.is_multiple_of(10) {
+                        if is_powerup_block || pickup_hash.is_multiple_of(12) {
                             let pickup_kind = match pickup_hash / 10 % 5 {
                                 0 => PickupKind::MultiBall,
                                 1 => PickupKind::Slow,
@@ -899,6 +987,69 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                             }
                         }
 
+                        // Spawn particles for blocks killed by explosion BEFORE removing them
+                        for block in state.blocks.iter() {
+                            if block.hp == 0 {
+                                let mid_angle = (block.arc.theta_start + block.arc.theta_end) / 2.0;
+                                let arc_span = block.arc.theta_end - block.arc.theta_start;
+                                let color = match block.kind {
+                                    super::state::BlockKind::Glass => 0,
+                                    super::state::BlockKind::Armored => 1,
+                                    super::state::BlockKind::Explosive => 2,
+                                    super::state::BlockKind::Invincible => 3,
+                                    super::state::BlockKind::Portal { .. } => 4,
+                                    super::state::BlockKind::Jello => 5,
+                                    super::state::BlockKind::Crystal => 6,
+                                    super::state::BlockKind::Electric => 7,
+                                    super::state::BlockKind::Magnet => 8,
+                                    super::state::BlockKind::Ghost => 9,
+                                };
+                                let particle_count = ((15.0 + arc_span * 20.0).min(30.0) as usize);
+                                let particle_seed = state.time_ticks as u32 + block.id;
+
+                                for i in 0..particle_count {
+                                    if state.particles.len() >= super::state::MAX_PARTICLES {
+                                        state.particles.remove(0);
+                                    }
+                                    let hash = particle_seed
+                                        .wrapping_mul(2654435761)
+                                        .wrapping_add(i as u32 * 7919);
+                                    let angle_offset =
+                                        ((hash % 1000) as f32 / 1000.0 - 0.5) * arc_span * 1.2;
+                                    let radius_offset =
+                                        ((hash / 1000 % 1000) as f32 / 1000.0 - 0.5) * block.arc.thickness;
+                                    let spawn_angle = mid_angle + angle_offset;
+                                    let spawn_radius = block.arc.radius + radius_offset;
+                                    let pos = Vec2::new(
+                                        spawn_angle.cos() * spawn_radius,
+                                        spawn_angle.sin() * spawn_radius,
+                                    );
+                                    let base_speed = 100.0 + ((hash / 1000000 % 120) as f32);
+                                    let vel_angle =
+                                        spawn_angle + ((hash / 100000 % 1000) as f32 / 1000.0 - 0.5) * 2.0;
+                                    let vel = Vec2::new(vel_angle.cos(), vel_angle.sin()) * base_speed;
+                                    let size = 3.0 + ((hash / 10000 % 100) as f32 / 100.0) * 5.0;
+
+                                    state.particles.push(super::state::Particle {
+                                        pos,
+                                        vel,
+                                        color,
+                                        life: 1.0,
+                                        size,
+                                    });
+                                }
+                                
+                                // Score for explosion kills too
+                                let base_score = match block.kind {
+                                    super::state::BlockKind::Glass => 10,
+                                    super::state::BlockKind::Armored => 25,
+                                    super::state::BlockKind::Jello => 20,
+                                    _ => 15,
+                                };
+                                state.score += base_score;
+                            }
+                        }
+
                         // Remove dead blocks from explosion
                         state.blocks.retain(|b| b.hp > 0);
 
@@ -918,6 +1069,72 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                         };
                         state.score += (base_score as f32 * multiplier) as u64;
                     }
+                }
+
+                // Electric arc proximity boost - arcs can jump to nearby balls!
+                // Check if ball is near any arc between electric blocks
+                let ball_pos = ball.pos;
+                'arc_check: for i in 0..state.blocks.len() {
+                    let b1 = &state.blocks[i];
+                    if b1.kind != super::state::BlockKind::Electric { continue; }
+                    
+                    for j in (i + 1)..state.blocks.len() {
+                        let b2 = &state.blocks[j];
+                        if b2.kind != super::state::BlockKind::Electric { continue; }
+                        if b2.ring_id != b1.ring_id { continue; } // Same ring only
+                        
+                        // Find closest edges (same logic as shader)
+                        let edges = [
+                            (b1.arc.theta_end, b2.arc.theta_start),
+                            (b1.arc.theta_end, b2.arc.theta_end),
+                            (b1.arc.theta_start, b2.arc.theta_start),
+                            (b1.arc.theta_start, b2.arc.theta_end),
+                        ];
+                        
+                        let mut min_gap = f32::MAX;
+                        let mut best_e1 = 0.0_f32;
+                        let mut best_e2 = 0.0_f32;
+                        for (e1, e2) in edges {
+                            let mut d = (e1 - e2).abs();
+                            if d > std::f32::consts::PI { d = std::f32::consts::TAU - d; }
+                            if d < min_gap {
+                                min_gap = d;
+                                best_e1 = e1;
+                                best_e2 = e2;
+                            }
+                        }
+                        
+                        // Only check if blocks are close enough to arc (< 0.4 rad)
+                        if min_gap > 0.4 { continue; }
+                        
+                        // Get edge positions
+                        let p1 = Vec2::new(best_e1.cos() * b1.arc.radius, best_e1.sin() * b1.arc.radius);
+                        let p2 = Vec2::new(best_e2.cos() * b2.arc.radius, best_e2.sin() * b2.arc.radius);
+                        
+                        // Distance from ball to line segment
+                        let line_dir = p2 - p1;
+                        let line_len = line_dir.length();
+                        if line_len < 1.0 { continue; }
+                        let line_norm = line_dir / line_len;
+                        let to_ball = ball_pos - p1;
+                        let proj = to_ball.dot(line_norm).clamp(0.0, line_len);
+                        let closest = p1 + line_norm * proj;
+                        let dist = (ball_pos - closest).length();
+                        
+                        // Arc jumps to ball if within 30px!
+                        if dist < 30.0 {
+                            ball.vel *= 1.1; // 10% speed boost from arc
+                            ball.electric_charge = (ball.electric_charge + 0.5).min(1.0); // Partial charge
+                            state.screen_shake = (state.screen_shake + 0.08).min(1.0);
+                            // Only one arc boost per tick
+                            break 'arc_check;
+                        }
+                    }
+                }
+
+                // Decay electric charge (~3 second duration)
+                if ball.electric_charge > 0.0 {
+                    ball.electric_charge = (ball.electric_charge - dt / 3.0).max(0.0);
                 }
 
                 // Record trail position every tick
@@ -971,8 +1188,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                 if speed > 150.0 {
                     pickup.vel = pickup.vel.normalize() * 150.0;
                 }
-                // TTL countdown
-                pickup.ttl_ticks = pickup.ttl_ticks.saturating_sub(1);
+                // No TTL countdown - pickups live until collected or sucked into black hole
             }
 
             // Check pickup collection by paddle
@@ -998,8 +1214,8 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                 if in_arc && in_radius {
                     collected_effects.push(pickup.kind);
                     false // Remove collected pickup
-                } else if pickup.ttl_ticks == 0 || pickup_dist < BLACK_HOLE_RADIUS {
-                    false // Remove expired or sucked in
+                } else if pickup_dist < BLACK_HOLE_RADIUS {
+                    false // Remove when sucked into black hole
                 } else {
                     true // Keep
                 }
@@ -1037,6 +1253,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                                     paddle_cooldown: 0,
                                     trail: ball.trail.clone(), // Copy parent's trail
                                     inside_portals: Vec::new(),
+                                    electric_charge: ball.electric_charge, // Inherit parent's charge!
                                 });
                             }
                         }
@@ -1260,7 +1477,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
         GamePhase::Breather => {
             // Keep blocks rotating during breather
             for block in &mut state.blocks {
-                block.rotate(dt);
+                block.rotate(dt, time_secs);
             }
 
             // Keep particles animating during breather!
@@ -1343,6 +1560,26 @@ pub fn generate_wave(state: &mut GameState) {
     
     log::info!("Wave {}: arena={}, space={}, layers={}", wave, state.arena_radius, available_space, num_layers);
 
+    // Special wave: Jello Madness! Every 10th wave starting at wave 10
+    let jello_madness = wave >= 10 && wave % 10 == 0;
+    if jello_madness {
+        log::info!("🟢 JELLO MADNESS WAVE!");
+    }
+
+    // Wave-wide caps on special block types (prevent monotony)
+    let mut electric_count = 0u32;
+    let mut crystal_count = 0u32;
+    let mut magnet_count = 0u32;
+    let mut ghost_count = 0u32;
+    let mut portal_count = 0u32;
+    
+    // Max counts scale slightly with layers
+    let max_electric = 4 + num_layers;
+    let max_crystal = 3 + num_layers;
+    let max_magnet = 3 + num_layers / 2;
+    let max_ghost = 4 + num_layers;
+    let max_portal = 4 + num_layers;
+
     // Generate layer radii from outer to inner
     let mut layer_radii = Vec::with_capacity(num_layers as usize);
     for i in 0..num_layers {
@@ -1423,18 +1660,34 @@ pub fn generate_wave(state: &mut GameState) {
             let theta_start = theta + gap;
             let theta_end = theta_start + arc_width;
 
-            // Block type based on wave and position (limit invincible per layer)
-            let kind = determine_block_kind(
-                wave,
-                layer,
-                i as u32,
-                block_seed,
-                num_blocks,
-                invincible_in_layer,
-            );
+            // Block type based on wave and position (with caps)
+            let kind = if jello_madness {
+                BlockKind::Jello // All Jello for special wave!
+            } else {
+                determine_block_kind(
+                    wave,
+                    layer,
+                    i as u32,
+                    block_seed,
+                    num_blocks,
+                    invincible_in_layer,
+                    electric_count >= max_electric,
+                    crystal_count >= max_crystal,
+                    magnet_count >= max_magnet,
+                    ghost_count >= max_ghost,
+                    portal_count >= max_portal,
+                )
+            };
 
-            if kind == BlockKind::Invincible {
-                invincible_in_layer += 1;
+            // Update counters
+            match kind {
+                BlockKind::Invincible => invincible_in_layer += 1,
+                BlockKind::Electric => electric_count += 1,
+                BlockKind::Crystal => crystal_count += 1,
+                BlockKind::Magnet => magnet_count += 1,
+                BlockKind::Ghost => ghost_count += 1,
+                BlockKind::Portal { .. } => portal_count += 1,
+                _ => {}
             }
 
             let hp = match kind {
@@ -1446,11 +1699,24 @@ pub fn generate_wave(state: &mut GameState) {
                 _ => 1,
             };
 
-            // Variable thickness for some blocks
-            let thickness = if block_seed.is_multiple_of(11) && wave > 3 {
+            // Thicker blocks contain powerups! ~10% chance, not on invincible/portal
+            let can_have_powerup = kind != BlockKind::Invincible 
+                && !matches!(kind, BlockKind::Portal { .. })
+                && wave > 1;
+            // Use hash for better distribution (block_seed has bad divisibility patterns)
+            let powerup_roll = block_seed.wrapping_mul(2654435761) % 100;
+            let has_powerup = can_have_powerup && powerup_roll < 10;
+            let thickness = if has_powerup {
                 BLOCK_THICKNESS * 1.5
             } else {
                 BLOCK_THICKNESS
+            };
+
+            // Ghost blocks start with random phase for staggered fading
+            let ghost_phase = if kind == BlockKind::Ghost {
+                (block_seed % 1000) as f32 / 1000.0 * std::f32::consts::TAU
+            } else {
+                0.0
             };
 
             let block = Block {
@@ -1460,6 +1726,9 @@ pub fn generate_wave(state: &mut GameState) {
                 arc: ArcSegment::new(radius, thickness, theta_start, theta_end),
                 rotation_speed,
                 wobble: 0.0,
+                visibility: 1.0,
+                ghost_phase,
+                ring_id: layer,
             };
             state.blocks.push(block);
 
@@ -1469,7 +1738,8 @@ pub fn generate_wave(state: &mut GameState) {
 }
 
 /// Determine block type based on wave progression
-/// invincible_count tracks how many invincible blocks already in this layer
+/// Caps prevent any one special type from dominating
+#[allow(clippy::too_many_arguments)]
 fn determine_block_kind(
     wave: u32,
     layer: u32,
@@ -1477,6 +1747,11 @@ fn determine_block_kind(
     seed: u32,
     layer_block_count: usize,
     invincible_in_layer: u32,
+    electric_capped: bool,
+    crystal_capped: bool,
+    magnet_capped: bool,
+    ghost_capped: bool,
+    portal_capped: bool,
 ) -> super::state::BlockKind {
     use super::state::BlockKind;
 
@@ -1490,10 +1765,9 @@ fn determine_block_kind(
 
     // Invincible blocks (wave 5+, very sparse)
     // Max 2 per layer, and never adjacent (check index spacing)
-    // Also need gaps - so cap at ~15% of layer
-    let max_invincible = (layer_block_count / 7).max(1) as u32; // ~14% max
+    let max_invincible = (layer_block_count / 7).max(1) as u32;
     let can_place_invincible =
-        wave >= 5 && invincible_in_layer < max_invincible.min(2) && index.is_multiple_of(4); // Spread them out (every 4th slot eligible)
+        wave >= 5 && invincible_in_layer < max_invincible.min(2) && index.is_multiple_of(4);
 
     if can_place_invincible && roll < 8 {
         return BlockKind::Invincible;
@@ -1505,25 +1779,44 @@ fn determine_block_kind(
     }
 
     // Portal blocks (wave 4+, ~8% chance, not on innermost layer)
-    if wave >= 4 && layer < 3 && (12..20).contains(&roll) {
-        return BlockKind::Portal { pair_id: seed }; // pair_id for future pairing
+    if wave >= 4 && layer < 3 && !portal_capped && (12..20).contains(&roll) {
+        return BlockKind::Portal { pair_id: seed };
     }
 
     // Jello blocks (wave 3+, ~10% chance, inner layers preferred)
     if wave >= 3 && layer >= 1 && (20..30).contains(&roll) {
-        return BlockKind::Jello;
+        return BlockKind::Jello; // No cap - Jello is fun!
+    }
+
+    // Crystal blocks (wave 4+, ~6% chance, outer layers)
+    if wave >= 4 && layer <= 1 && !crystal_capped && (30..36).contains(&roll) {
+        return BlockKind::Crystal;
+    }
+
+    // Electric blocks (wave 5+, ~6% chance - reduced)
+    if wave >= 5 && !electric_capped && (36..42).contains(&roll) {
+        return BlockKind::Electric;
+    }
+
+    // Magnet blocks (wave 6+, ~5% chance, middle layers)
+    if wave >= 6 && layer >= 1 && layer <= 2 && !magnet_capped && (42..47).contains(&roll) {
+        return BlockKind::Magnet;
+    }
+
+    // Ghost blocks (wave 7+, ~6% chance)
+    if wave >= 7 && !ghost_capped && (47..53).contains(&roll) {
+        return BlockKind::Ghost;
     }
 
     // Armored blocks increase with wave
-    // Wave 2: 25%, Wave 3: 35%, Wave 4+: 45%
     let armored_chance = match wave {
         2 => 25,
         3 => 35,
-        _ => 45,
+        _ => 40, // Reduced from 45
     };
 
-    // Inner layers get more armored blocks (+10% per layer)
-    let armored_chance = armored_chance + (layer * 10);
+    // Inner layers get more armored blocks (+8% per layer, reduced from 10%)
+    let armored_chance = armored_chance + (layer * 8);
 
     if roll < armored_chance {
         return BlockKind::Armored;
@@ -1573,6 +1866,9 @@ mod tests {
             arc: ArcSegment::new(200.0, 20.0, 0.0, 0.5),
             rotation_speed: 0.0,
             wobble: 0.0,
+            visibility: 1.0,
+            ghost_phase: 0.0,
+            ring_id: 0,
         });
 
         // Launch the ball first so we're in Playing state

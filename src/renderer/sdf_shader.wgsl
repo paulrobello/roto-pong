@@ -43,7 +43,7 @@ struct Ball {
     radius: f32,
     speed: f32,
     sliding_block_id: u32,  // 0 = not sliding, else = portal block ID
-    _pad1: u32,
+    electric_charge: f32,   // 0-1 electric charge visual
     _pad2: u32,
     _pad3: u32,
 }
@@ -57,6 +57,10 @@ struct Block {
     wobble: f32,
     block_id: u32,
     hp: u32,
+    visibility: f32,
+    pole_flags: u32,  // Magnet: bit0=red_active, bit1=silver_active
+    ring_id: u32,     // Ring/layer index (for electric arc connections)
+    _pad3: u32,
 }
 
 struct TrailPoint {
@@ -174,33 +178,48 @@ fn fbm(p: vec2<f32>) -> f32 {
     return value;
 }
 
-// Swirling black hole effect - simplified
+// M87-style black hole - asymmetric photon ring
 fn blackHoleSwirl(p: vec2<f32>, hole_radius: f32) -> vec3<f32> {
     let r = length(p);
-    let disk_inner = hole_radius;
-    let disk_outer = hole_radius * 3.0;
+    let inner_edge = hole_radius * 1.0;   // Start right at the hole
+    let outer_edge = hole_radius * 2.5;   // Extend outward
     
-    // Early exit for most pixels
-    if (r < disk_inner || r > disk_outer) {
+    // Only render between inner and outer
+    if (r < inner_edge || r > outer_edge) {
         return vec3<f32>(0.0, 0.0, 0.0);
     }
     
+    let ring_t = (r - inner_edge) / (outer_edge - inner_edge); // 0 at hole, 1 at outer
+    
     let angle = atan2(p.y, p.x);
-    let disk_t = (r - disk_inner) / (disk_outer - disk_inner);
     
-    // Simple spiral
-    let twist = (1.0 - disk_t) * 6.0;
-    let spiral_angle = angle * 2.0 - twist - globals.time * 0.5;
-    let arm = smoothstep(-0.3, 0.3, sin(spiral_angle));
+    // Swirling arms
+    let arm_twist = (1.0 - ring_t) * 4.0;
+    let arm1 = sin(angle * 2.0 - arm_twist - globals.time * 0.3);
+    let arm2 = sin(angle * 3.0 + arm_twist * 0.7 + globals.time * 0.2);
+    let arms = smoothstep(-0.2, 0.8, arm1) * 0.7 + smoothstep(-0.3, 0.7, arm2) * 0.3;
     
-    // Colors
-    let hot = vec3<f32>(0.6, 0.35, 0.08);
-    let cool = vec3<f32>(0.3, 0.1, 0.5);
-    let arm_color = mix(cool, hot, arm);
+    // Radial falloff - bright at hole, fades to transparent at outer edge
+    let radial_falloff = 1.0 - ring_t;  // 1 at hole, 0 at outer
+    let radial_falloff_smooth = radial_falloff * radial_falloff;  // Quadratic for smoother fade
     
-    // Cubic falloff
-    let falloff = (1.0 - disk_t) * (1.0 - disk_t) * (1.0 - disk_t);
-    return arm_color * falloff * 0.6;
+    // Subtle turbulence for texture
+    let wisp1 = sin(angle * 12.0 + r * 0.4 + globals.time * 0.6) * 0.1;
+    let wisp2 = sin(angle * 7.0 - globals.time * 0.4) * 0.08;
+    let turbulence = 1.0 + wisp1 + wisp2;
+    
+    // Intensity - arms are bright, gaps are transparent, radial falloff
+    let arm_intensity = arms * 0.8 + 0.1;  // Arms bright, gaps dim
+    let intensity = arm_intensity * radial_falloff_smooth * turbulence;
+    
+    // Colors - orange
+    let hot_color = vec3<f32>(1.0, 0.55, 0.1);  // Bright orange
+    let warm_color = vec3<f32>(0.9, 0.3, 0.0);  // Deep orange
+    
+    // Brighter in arms and near hole
+    let col = mix(warm_color, hot_color, arms * radial_falloff);
+    
+    return col * intensity;
 }
 
 // ============================================================================
@@ -381,6 +400,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var closest_block_thickness = 0.0;
     var closest_block_wobble = 0.0;
     var closest_block_hp = 0u;
+    var closest_block_visibility = 1.0;
+    var closest_block_id = 0u;
+    var closest_block_pole_flags = 3u; // Default: both poles active
     let block_r = length(p_dist);
     let block_angle = atan2(p_dist.y, p_dist.x);
     
@@ -459,6 +481,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             closest_block_thickness = b.thickness;
             closest_block_wobble = b.wobble;
             closest_block_hp = b.hp;
+            closest_block_visibility = b.visibility;
+            closest_block_id = b.block_id;
+            closest_block_pole_flags = b.pole_flags;
         }
     }
     
@@ -489,7 +514,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             opacity = 0.85;
             
             // HP indicator: show dots/pips based on HP
-            // Each pip is a small bright spot along the arc
+            // Each pip is a bright golden spot along the arc
             let hp = closest_block_hp;
             if (hp > 1u) {
                 // Calculate position along block for pip display
@@ -505,10 +530,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                     let pip_pos = vec2<f32>(cos(pip_angle), sin(pip_angle)) * closest_block_radius;
                     let pip_dist = length(p_dist - pip_pos);
                     
-                    // Small glowing pip
-                    if (pip_dist < 4.0) {
-                        let pip_glow = 1.0 - pip_dist / 4.0;
-                        inner_color += vec3<f32>(0.4, 0.5, 0.6) * pip_glow * pip_glow;
+                    // Bright golden pip - bigger and more visible
+                    if (pip_dist < 7.0) {
+                        let pip_glow = 1.0 - pip_dist / 7.0;
+                        let pip_intensity = pip_glow * pip_glow * pip_glow; // Sharper falloff
+                        // Golden yellow color, very bright
+                        inner_color += vec3<f32>(1.0, 0.85, 0.3) * pip_intensity * 1.5;
+                        outer_color += vec3<f32>(1.0, 0.9, 0.5) * pip_intensity * 0.8;
                     }
                 }
             }
@@ -519,13 +547,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             shimmer_color = vec3<f32>(1.0, 1.0, 0.5);
             emission = 0.35;
             opacity = 0.7;
-        } else if (closest_block_kind == 3u) { // Invincible
-            inner_color = vec3<f32>(0.8, 0.6, 0.1);
-            outer_color = vec3<f32>(1.0, 0.9, 0.3);
-            stroke_color = vec3<f32>(1.0, 1.0, 0.8);
-            shimmer_color = vec3<f32>(1.0, 1.0, 0.9);
-            emission = 0.25;
-            opacity = 0.9;
+        } else if (closest_block_kind == 3u) { // Invincible - dark gray, immovable
+            inner_color = vec3<f32>(0.25, 0.25, 0.28);
+            outer_color = vec3<f32>(0.4, 0.4, 0.45);
+            stroke_color = vec3<f32>(0.5, 0.5, 0.55);
+            shimmer_color = vec3<f32>(0.6, 0.6, 0.65);
+            emission = 0.1;
+            opacity = 0.95;
         } else if (closest_block_kind == 4u) { // Portal
             inner_color = vec3<f32>(0.0, 0.4, 0.5);
             outer_color = vec3<f32>(0.1, 0.8, 0.7);
@@ -543,6 +571,80 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             shimmer_color = vec3<f32>(0.8, 1.0, 0.6);
             emission = 0.2 + closest_block_wobble * 0.3;
             opacity = 0.6;
+            has_specular = true;
+        } else if (closest_block_kind == 6u) { // Crystal - prismatic rainbow
+            // Rainbow gradient based on angle + time
+            let crystal_hue = fract(block_angle / 6.28318 + globals.time * 0.15);
+            // HSV to RGB inline (h=crystal_hue, s=0.7, v=1.0)
+            let h6 = crystal_hue * 6.0;
+            let h_mod2 = (h6 * 0.5 - floor(h6 * 0.5)) * 2.0;
+            let cr = 0.7;
+            let cx = cr * (1.0 - abs(h_mod2 - 1.0));
+            var rainbow: vec3<f32>;
+            if (h6 < 1.0) { rainbow = vec3<f32>(cr, cx, 0.0); }
+            else if (h6 < 2.0) { rainbow = vec3<f32>(cx, cr, 0.0); }
+            else if (h6 < 3.0) { rainbow = vec3<f32>(0.0, cr, cx); }
+            else if (h6 < 4.0) { rainbow = vec3<f32>(0.0, cx, cr); }
+            else if (h6 < 5.0) { rainbow = vec3<f32>(cx, 0.0, cr); }
+            else { rainbow = vec3<f32>(cr, 0.0, cx); }
+            rainbow = rainbow + vec3<f32>(0.3, 0.3, 0.3);
+            inner_color = rainbow * 0.7;
+            outer_color = rainbow;
+            stroke_color = vec3<f32>(1.0, 1.0, 1.0);
+            shimmer_color = rainbow;
+            emission = 0.4;
+            opacity = 0.8;
+            has_specular = true;
+        } else if (closest_block_kind == 7u) { // Electric - yellow/white crackling
+            // Animated electric pulse
+            let pulse_phase = globals.time * 8.0 + f32(closest_block_id) * 1.5;
+            let electric_pulse = sin(pulse_phase) * 0.5 + 0.5;
+            inner_color = vec3<f32>(0.8, 0.6 + electric_pulse * 0.2, 0.0);
+            outer_color = vec3<f32>(1.0, 0.9 + electric_pulse * 0.1, 0.2);
+            stroke_color = vec3<f32>(1.0, 1.0, 0.7);
+            shimmer_color = vec3<f32>(1.0, 1.0, 0.8) * electric_pulse;
+            emission = 0.35 + electric_pulse * 0.25;
+            opacity = 0.85;
+            has_specular = true;
+        } else if (closest_block_kind == 8u) { // Magnet - red/silver poles with chain awareness
+            // Get block's angular span to determine pole position
+            let block_data = blocks[u32(closest_block_idx)];
+            let block_mid = (block_data.theta_start + block_data.theta_end) * 0.5;
+            var angle_from_mid = block_angle - block_mid;
+            // Normalize to [-PI, PI]
+            if (angle_from_mid > 3.14159) { angle_from_mid -= 6.28318; }
+            if (angle_from_mid < -3.14159) { angle_from_mid += 6.28318; }
+            
+            // Check which poles are active (bit0=red, bit1=silver)
+            let red_active = (closest_block_pole_flags & 1u) != 0u;
+            let silver_active = (closest_block_pole_flags & 2u) != 0u;
+            
+            // Pole colors: active = colored, inactive = neutral gray
+            let red_pole = select(vec3<f32>(0.4, 0.4, 0.45), vec3<f32>(0.9, 0.15, 0.1), red_active);
+            let silver_pole = select(vec3<f32>(0.4, 0.4, 0.45), vec3<f32>(0.85, 0.85, 0.9), silver_active);
+            
+            // Gradient from red end (negative angle) to silver end (positive angle)
+            let pole_t = smoothstep(-0.3, 0.3, angle_from_mid);
+            let mag_pulse = sin(globals.time * 3.0) * 0.1 + 0.9;
+            inner_color = mix(red_pole, silver_pole, pole_t) * 0.7 * mag_pulse;
+            outer_color = mix(red_pole, silver_pole, pole_t) * mag_pulse;
+            stroke_color = vec3<f32>(0.3, 0.3, 0.35);
+            shimmer_color = mix(
+                select(vec3<f32>(0.5, 0.5, 0.5), vec3<f32>(1.0, 0.3, 0.2), red_active),
+                select(vec3<f32>(0.5, 0.5, 0.5), vec3<f32>(1.0, 1.0, 1.0), silver_active),
+                pole_t
+            );
+            emission = 0.2;
+            opacity = 0.9;
+        } else if (closest_block_kind == 9u) { // Ghost - fades in/out
+            // Use visibility from block data
+            let ghost_alpha = closest_block_visibility;
+            inner_color = vec3<f32>(0.5, 0.5, 0.7);
+            outer_color = vec3<f32>(0.7, 0.7, 0.9);
+            stroke_color = vec3<f32>(0.9, 0.9, 1.0);
+            shimmer_color = vec3<f32>(1.0, 1.0, 1.0);
+            emission = 0.15 * ghost_alpha;
+            opacity = 0.6 * ghost_alpha;
             has_specular = true;
         }
         
@@ -576,6 +678,154 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         color = mix(color, stroke_color, stroke_mask * mask * outer_edge * 0.6);
     }
     
+    // Electric arcs between adjacent electric blocks on same ring
+    // Performance: Only check if pixel is near an electric block's radius band
+    var near_electric = false;
+    for (var check = 0u; check < globals.block_count && check < MAX_BLOCKS; check++) {
+        let bc = blocks[check];
+        if (bc.kind == 7u && bc.thickness > 0.0) {
+            if (abs(block_r - bc.radius) < 50.0) {
+                near_electric = true;
+                break;
+            }
+        }
+    }
+    
+    if (near_electric) {
+        // First: Draw internal electricity THROUGH each electric block
+        for (var i = 0u; i < globals.block_count && i < MAX_BLOCKS; i++) {
+            let eb = blocks[i];
+            if (eb.kind != 7u || eb.thickness <= 0.0) { continue; }
+            if (abs(block_r - eb.radius) > eb.thickness * 0.6) { continue; }
+            
+            // Check if pixel angle is within block's arc
+            var pa = block_angle - eb.theta_start;
+            pa = pa - round(pa / 6.28318) * 6.28318;
+            if (pa < 0.0) { pa += 6.28318; }
+            var span = eb.theta_end - eb.theta_start;
+            span = span - round(span / 6.28318) * 6.28318;
+            if (span <= 0.0) { span += 6.28318; }
+            
+            if (pa <= span) {
+                // Pixel is within this electric block - draw internal arc
+                let arc_t = pa / span; // 0 to 1 along block
+                let time_off = f32(eb.block_id) * 0.7;
+                
+                // Jagged noise perpendicular to the arc (radial direction)
+                let noise1 = sin(arc_t * 20.0 + globals.time * 15.0 + time_off) * 3.0;
+                let noise2 = sin(arc_t * 45.0 - globals.time * 22.0 + time_off * 1.5) * 1.5;
+                let noise3 = sin(arc_t * 80.0 + globals.time * 30.0 + time_off * 2.1) * 0.8;
+                let taper = sin(arc_t * 3.14159); // Taper at ends
+                let radial_offset = (noise1 + noise2 + noise3) * taper;
+                
+                // Distance from the jagged center line
+                let dist_from_center = abs((block_r - eb.radius) - radial_offset);
+                
+                if (dist_from_center < 6.0) {
+                    let intensity = exp(-dist_from_center / 1.2) * 0.7;
+                    let flicker = sin(globals.time * 40.0 + time_off * 3.0) * 0.2 + 0.8;
+                    color += vec3<f32>(0.6, 0.9, 1.0) * intensity * flicker;
+                }
+            }
+        }
+        
+        // Second: Draw arcs BETWEEN adjacent electric blocks
+        for (var i = 0u; i < globals.block_count && i < MAX_BLOCKS; i++) {
+            let b1 = blocks[i];
+            if (b1.kind != 7u || b1.thickness <= 0.0) { continue; }
+            
+            // Only process if pixel is near this block's radius
+            if (abs(block_r - b1.radius) > 30.0) { continue; }
+            
+            // Find immediate neighbor electric blocks on same ring
+            for (var j = i + 1u; j < globals.block_count && j < MAX_BLOCKS; j++) {
+                let b2 = blocks[j];
+                if (b2.kind != 7u || b2.thickness <= 0.0) { continue; }
+                if (b2.ring_id != b1.ring_id) { continue; } // Must be on same ring
+                
+                // Find closest edges between the two blocks
+                // Try all 4 combinations and pick the closest pair
+                let b1_start = b1.theta_start;
+                let b1_end = b1.theta_end;
+                let b2_start = b2.theta_start;
+                let b2_end = b2.theta_end;
+                
+                // Calculate angular distances for each edge pair
+                var min_dist = 999.0;
+                var edge1 = b1_end;
+                var edge2 = b2_start;
+                
+                // b1_end to b2_start
+                var d = abs(b1_end - b2_start);
+                d = min(d, 6.28318 - d);
+                if (d < min_dist) { min_dist = d; edge1 = b1_end; edge2 = b2_start; }
+                
+                // b1_end to b2_end
+                d = abs(b1_end - b2_end);
+                d = min(d, 6.28318 - d);
+                if (d < min_dist) { min_dist = d; edge1 = b1_end; edge2 = b2_end; }
+                
+                // b1_start to b2_start
+                d = abs(b1_start - b2_start);
+                d = min(d, 6.28318 - d);
+                if (d < min_dist) { min_dist = d; edge1 = b1_start; edge2 = b2_start; }
+                
+                // b1_start to b2_end
+                d = abs(b1_start - b2_end);
+                d = min(d, 6.28318 - d);
+                if (d < min_dist) { min_dist = d; edge1 = b1_start; edge2 = b2_end; }
+                
+                // Only arc if edges are close enough (gap < 0.4 rad ~23 degrees)
+                if (min_dist > 0.4) { continue; }
+                
+                // Get edge positions
+                let p1 = vec2<f32>(cos(edge1), sin(edge1)) * b1.radius;
+                let p2 = vec2<f32>(cos(edge2), sin(edge2)) * b2.radius;
+                
+                // Calculate position along line segment
+                let to_p = p_dist - p1;
+                let line_dir = p2 - p1;
+                let line_len = length(line_dir);
+                if (line_len < 1.0) { continue; }
+                let line_norm = line_dir / line_len;
+                let proj = clamp(dot(to_p, line_norm), 0.0, line_len);
+                let arc_t = proj / line_len;
+                
+                // Perpendicular direction for jagged displacement
+                let perp = vec2<f32>(-line_norm.y, line_norm.x);
+                
+                // Multi-frequency noise for jagged lightning path
+                let time_offset = f32(i * 17u + j * 31u) * 0.1;
+                let noise1 = sin(arc_t * 25.0 + globals.time * 12.0 + time_offset) * 8.0;
+                let noise2 = sin(arc_t * 50.0 - globals.time * 18.0 + time_offset * 1.7) * 4.0;
+                let noise3 = sin(arc_t * 100.0 + globals.time * 25.0 + time_offset * 2.3) * 2.0;
+                // Taper noise at endpoints so it connects cleanly
+                let taper = sin(arc_t * 3.14159);
+                let displacement = (noise1 + noise2 + noise3) * taper;
+                
+                // Displaced point on the jagged lightning path
+                let base_point = p1 + line_norm * proj;
+                let jagged_point = base_point + perp * displacement;
+                let dist_to_arc = length(p_dist - jagged_point);
+                
+                // Skip if pixel too far from this arc
+                if (dist_to_arc > 12.0) { continue; }
+                
+                // Arc thickness with animated crackle
+                let crackle = sin(arc_t * 30.0 + globals.time * 20.0 + time_offset) * 0.5 + 0.5;
+                let arc_thickness = 1.5 + crackle;
+                let arc_intensity = exp(-dist_to_arc / arc_thickness) * 0.9;
+                
+                // Flickering
+                let flicker = sin(globals.time * 35.0 + time_offset * 5.0) * 0.25 + 0.75;
+                
+                // Bright cyan-white electric color
+                let arc_color = vec3<f32>(0.7, 0.95, 1.0) * arc_intensity * flicker;
+                color += arc_color;
+            }
+        }
+    }
+    
     // Black hole with swirling accretion disk
     let hole_d = sdCircle(p, globals.black_hole_radius);
     
@@ -583,11 +833,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let swirl = blackHoleSwirl(p, globals.black_hole_radius);
     color += swirl;
     
-    // Event horizon glow (bright ring at the edge)
-    let horizon_d = abs(hole_d) - 2.0;
-    let pulse = sin(globals.time * 2.0) * 0.15 + 0.85;
-    let horizon_glow = exp(-max(horizon_d, 0.0) * 0.4) * 0.6 * pulse;
-    color += vec3<f32>(1.0, 0.6, 0.2) * horizon_glow;
+    // Event horizon edge glow - BRIGHT uniform ring at hole edge
+    let horizon_d = abs(hole_d) - 1.5;
+    let horizon_glow = exp(-max(horizon_d, 0.0) * 0.6) * 1.2;
+    color += vec3<f32>(1.0, 0.5, 0.1) * horizon_glow;
     
     // Shield glow! Purple protective barrier around the black hole
     if (globals.shield_active > 0u) {
@@ -692,6 +941,44 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let ball_stroke_d = abs(d) - 1.2;
         let ball_stroke_mask = 1.0 - smoothstep(-aa * 0.5, aa * 0.5, ball_stroke_d);
         color = mix(color, vec3<f32>(1.0, 1.0, 1.0), ball_stroke_mask * mask);
+        
+        // Electric charge effect! ⚡
+        if (ball.electric_charge > 0.01) {
+            let charge = ball.electric_charge;
+            
+            // Crackling electric aura around the ball
+            let angle_to_ball = atan2(p.y - ball.pos.y, p.x - ball.pos.x);
+            let dist_from_ball = length(p - ball.pos);
+            
+            // Multiple lightning tendrils radiating outward
+            let num_tendrils = 6.0;
+            let tendril_angle = angle_to_ball * num_tendrils;
+            let time_off = f32(i) * 2.3;
+            
+            // Jagged noise for tendril shape
+            let noise1 = sin(tendril_angle + globals.time * 12.0 + time_off) * 4.0;
+            let noise2 = sin(tendril_angle * 2.3 - globals.time * 18.0 + time_off) * 2.0;
+            let noise3 = sin(tendril_angle * 5.0 + globals.time * 25.0) * 1.0;
+            let tendril_offset = (noise1 + noise2 + noise3) * charge;
+            
+            // Tendril extends from ball surface outward
+            let tendril_reach = ball.radius + 8.0 + tendril_offset;
+            let in_tendril = dist_from_ball < tendril_reach && dist_from_ball > ball.radius - 2.0;
+            
+            if (in_tendril) {
+                let tendril_t = (dist_from_ball - ball.radius) / (tendril_reach - ball.radius);
+                let tendril_width = 2.5 * (1.0 - tendril_t) * charge; // Tapers outward
+                let flicker = sin(globals.time * 40.0 + tendril_angle * 3.0) * 0.3 + 0.7;
+                let intensity = exp(-tendril_t * 2.0) * charge * flicker;
+                
+                // Cyan-white electric color
+                color += vec3<f32>(0.5, 0.9, 1.0) * intensity * 0.8;
+            }
+            
+            // Core glow
+            let core_glow = exp(-max(d, 0.0) * 0.15) * charge * 0.4;
+            color += vec3<f32>(0.4, 0.8, 1.0) * core_glow;
+        }
     }
     
     // Particles! 🎆 MAKE IT RAIN!

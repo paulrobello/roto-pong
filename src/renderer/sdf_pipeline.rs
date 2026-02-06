@@ -59,7 +59,8 @@ struct BallData {
     radius: f32,
     speed: f32,
     sliding_block_id: u32, // 0 = not sliding, else = portal block ID
-    _pad: [u32; 3],        // Pad to 32 bytes for alignment
+    electric_charge: f32,  // 0-1 electric charge for visual effect
+    _pad: [u32; 2],        // Pad to 32 bytes for alignment
 }
 
 #[repr(C)]
@@ -71,8 +72,12 @@ struct BlockData {
     thickness: f32,
     kind: u32,
     wobble: f32,
-    block_id: u32, // For matching sliding balls
-    hp: u32,       // Current HP for damage indicator
+    block_id: u32,  // For matching sliding balls
+    hp: u32,        // Current HP for damage indicator
+    visibility: f32, // Ghost block visibility (0-1)
+    pole_flags: u32, // Magnet: bit0=red_active, bit1=silver_active
+    ring_id: u32,    // Ring/layer index (for electric arc connections)
+    _pad3: u32,
 }
 
 #[repr(C)]
@@ -156,6 +161,10 @@ impl SdfRenderState {
             .expect("Failed to create device");
 
         let surface_caps = surface.get_capabilities(adapter);
+        log::info!("Surface formats: {:?}", surface_caps.formats);
+        log::info!("Surface alpha modes: {:?}", surface_caps.alpha_modes);
+        log::info!("Surface present modes: {:?}", surface_caps.present_modes);
+        
         let surface_format = surface_caps
             .formats
             .iter()
@@ -163,6 +172,8 @@ impl SdfRenderState {
             .copied()
             .unwrap_or(surface_caps.formats[0]);
 
+        log::info!("Using surface format: {:?}", surface_format);
+        
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
@@ -173,13 +184,16 @@ impl SdfRenderState {
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
         };
+        log::info!("Surface config: {}x{}, alpha: {:?}", width, height, config.alpha_mode);
         surface.configure(&device, &config);
 
         // Create shader
+        log::info!("Creating shader module...");
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("sdf_shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("sdf_shader.wgsl").into()),
         });
+        log::info!("Shader module created");
 
         // Create buffers
         let globals_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -532,7 +546,8 @@ impl SdfRenderState {
                 radius: 0.0,
                 speed: 0.0,
                 sliding_block_id: 0,
-                _pad: [0; 3]
+                electric_charge: 0.0,
+                _pad: [0; 2]
             };
             MAX_BALLS
         ];
@@ -548,7 +563,8 @@ impl SdfRenderState {
                 radius: ball.radius,
                 speed: ball.vel.length(),
                 sliding_block_id,
-                _pad: [0; 3],
+                electric_charge: ball.electric_charge,
+                _pad: [0; 2],
             };
         }
         self.queue
@@ -565,6 +581,10 @@ impl SdfRenderState {
                 wobble: 0.0,
                 block_id: 0,
                 hp: 0,
+                visibility: 1.0,
+                pole_flags: 0,
+                ring_id: 0,
+                _pad3: 0,
             };
             MAX_BLOCKS
         ];
@@ -576,8 +596,44 @@ impl SdfRenderState {
                 crate::sim::BlockKind::Invincible => 3,
                 crate::sim::BlockKind::Portal { .. } => 4,
                 crate::sim::BlockKind::Jello => 5,
-                _ => 0,
+                crate::sim::BlockKind::Crystal => 6,
+                crate::sim::BlockKind::Electric => 7,
+                crate::sim::BlockKind::Magnet => 8,
+                crate::sim::BlockKind::Ghost => 9,
             };
+            
+            // Compute pole_flags for magnet blocks (chain detection)
+            let mut pole_flags: u32 = 0b11; // Default: both ends active
+            if block.kind == crate::sim::BlockKind::Magnet {
+                let angle_tolerance = 0.15_f32;
+                let radius_tolerance = 5.0_f32;
+                let mut red_active = true;
+                let mut silver_active = true;
+                
+                for other in &state.blocks {
+                    if other.id == block.id { continue; }
+                    if other.kind != crate::sim::BlockKind::Magnet { continue; }
+                    if (other.arc.radius - block.arc.radius).abs() > radius_tolerance { continue; }
+                    
+                    // Check if other's theta_end connects to our theta_start (red end)
+                    let diff_to_red = (other.arc.theta_end - block.arc.theta_start).abs();
+                    let tau = std::f32::consts::TAU;
+                    let diff_to_red_wrapped = (diff_to_red - tau).abs().min(diff_to_red);
+                    if diff_to_red_wrapped < angle_tolerance {
+                        red_active = false;
+                    }
+                    
+                    // Check if other's theta_start connects to our theta_end (silver end)
+                    let diff_to_silver = (other.arc.theta_start - block.arc.theta_end).abs();
+                    let diff_to_silver_wrapped = (diff_to_silver - tau).abs().min(diff_to_silver);
+                    if diff_to_silver_wrapped < angle_tolerance {
+                        silver_active = false;
+                    }
+                }
+                
+                pole_flags = (if red_active { 1 } else { 0 }) | (if silver_active { 2 } else { 0 });
+            }
+            
             blocks_data[i] = BlockData {
                 theta_start: block.arc.theta_start,
                 theta_end: block.arc.theta_end,
@@ -587,6 +643,10 @@ impl SdfRenderState {
                 wobble: block.wobble,
                 block_id: block.id,
                 hp: block.hp as u32,
+                visibility: block.visibility,
+                pole_flags,
+                ring_id: block.ring_id,
+                _pad3: 0,
             };
         }
         self.queue
