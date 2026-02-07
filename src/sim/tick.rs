@@ -62,7 +62,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
     if state.screen_shake < 0.01 {
         state.screen_shake = 0.0;
     }
-    
+
     // Decay wave flash (slower, more dramatic)
     state.wave_flash *= 0.95;
     if state.wave_flash < 0.01 {
@@ -356,18 +356,24 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                     let arc_span = block.arc.theta_end - block.arc.theta_start;
                     let particle_count = ((20.0 + arc_span * 30.0).min(40.0)) as usize;
                     let particle_seed = state.time_ticks as u32 + block.id;
-                    
+
                     for i in 0..particle_count {
                         if state.particles.len() >= super::state::MAX_PARTICLES {
                             state.particles.remove(0);
                         }
-                        let hash = particle_seed.wrapping_mul(2654435761).wrapping_add(i as u32 * 7919);
+                        let hash = particle_seed
+                            .wrapping_mul(2654435761)
+                            .wrapping_add(i as u32 * 7919);
                         let angle_offset = ((hash % 1000) as f32 / 1000.0 - 0.5) * arc_span * 1.2;
-                        let radius_offset = ((hash / 1000 % 1000) as f32 / 1000.0 - 0.5) * block.arc.thickness;
+                        let radius_offset =
+                            ((hash / 1000 % 1000) as f32 / 1000.0 - 0.5) * block.arc.thickness;
                         let spawn_angle = mid_angle + angle_offset;
                         let spawn_radius = block.arc.radius + radius_offset;
-                        let pos = Vec2::new(spawn_angle.cos() * spawn_radius, spawn_angle.sin() * spawn_radius);
-                        
+                        let pos = Vec2::new(
+                            spawn_angle.cos() * spawn_radius,
+                            spawn_angle.sin() * spawn_radius,
+                        );
+
                         let vel_hash = hash.wrapping_mul(1664525).wrapping_add(1013904223);
                         let vel_angle = (vel_hash % 10000) as f32 / 10000.0 * std::f32::consts::TAU;
                         let speed_hash = vel_hash.wrapping_mul(22695477).wrapping_add(1);
@@ -375,7 +381,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                         let vel = Vec2::new(vel_angle.cos(), vel_angle.sin()) * base_speed;
                         let size_hash = speed_hash.wrapping_mul(69069).wrapping_add(1);
                         let size = 1.5 + (size_hash % 250) as f32 / 100.0;
-                        
+
                         state.particles.push(super::state::Particle {
                             pos,
                             vel,
@@ -419,47 +425,64 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                 for block in &state.blocks {
                     if block.kind == super::state::BlockKind::Magnet {
                         let block_mid_theta = (block.arc.theta_start + block.arc.theta_end) * 0.5;
-                        let block_center = Vec2::new(block_mid_theta.cos(), block_mid_theta.sin()) * block.arc.radius;
+                        let block_center = Vec2::new(block_mid_theta.cos(), block_mid_theta.sin())
+                            * block.arc.radius;
                         let to_magnet = block_center - ball.pos;
                         let dist_to_magnet = to_magnet.length();
-                        
+
                         if dist_to_magnet > 10.0 && dist_to_magnet < 150.0 {
                             // Check if this block's ends are connected to other magnets (chain detection)
                             let angle_tolerance = 0.15; // ~8.5 degrees
                             let radius_tolerance = 5.0;
-                            
+
                             let mut red_end_is_endpoint = true;
                             let mut silver_end_is_endpoint = true;
-                            
+
                             for other in &state.blocks {
-                                if other.id == block.id { continue; }
-                                if other.kind != super::state::BlockKind::Magnet { continue; }
-                                if (other.arc.radius - block.arc.radius).abs() > radius_tolerance { continue; }
-                                
+                                if other.id == block.id {
+                                    continue;
+                                }
+                                if other.kind != super::state::BlockKind::Magnet {
+                                    continue;
+                                }
+                                if (other.arc.radius - block.arc.radius).abs() > radius_tolerance {
+                                    continue;
+                                }
+
                                 // Check if other's theta_end connects to our theta_start (red end)
-                                let diff_to_red = (other.arc.theta_end - block.arc.theta_start).abs();
-                                let diff_to_red_wrapped = (diff_to_red - std::f32::consts::TAU).abs().min(diff_to_red);
+                                let diff_to_red =
+                                    (other.arc.theta_end - block.arc.theta_start).abs();
+                                let diff_to_red_wrapped =
+                                    (diff_to_red - std::f32::consts::TAU).abs().min(diff_to_red);
                                 if diff_to_red_wrapped < angle_tolerance {
                                     red_end_is_endpoint = false;
                                 }
-                                
+
                                 // Check if other's theta_start connects to our theta_end (silver end)
-                                let diff_to_silver = (other.arc.theta_start - block.arc.theta_end).abs();
-                                let diff_to_silver_wrapped = (diff_to_silver - std::f32::consts::TAU).abs().min(diff_to_silver);
+                                let diff_to_silver =
+                                    (other.arc.theta_start - block.arc.theta_end).abs();
+                                let diff_to_silver_wrapped = (diff_to_silver
+                                    - std::f32::consts::TAU)
+                                    .abs()
+                                    .min(diff_to_silver);
                                 if diff_to_silver_wrapped < angle_tolerance {
                                     silver_end_is_endpoint = false;
                                 }
                             }
-                            
+
                             // Only apply force if near an active endpoint
-                            let red_end = Vec2::new(block.arc.theta_start.cos(), block.arc.theta_start.sin()) * block.arc.radius;
-                            let silver_end = Vec2::new(block.arc.theta_end.cos(), block.arc.theta_end.sin()) * block.arc.radius;
+                            let red_end =
+                                Vec2::new(block.arc.theta_start.cos(), block.arc.theta_start.sin())
+                                    * block.arc.radius;
+                            let silver_end =
+                                Vec2::new(block.arc.theta_end.cos(), block.arc.theta_end.sin())
+                                    * block.arc.radius;
                             let dist_to_red = (ball.pos - red_end).length();
                             let dist_to_silver = (ball.pos - silver_end).length();
-                            
+
                             // Base strength, falls off with distance
                             let strength = 50.0 * (1.0 - dist_to_magnet / 150.0);
-                            
+
                             if dist_to_red < dist_to_silver && red_end_is_endpoint {
                                 // Closer to red end AND it's an endpoint: PULL toward red pole
                                 let to_red = (red_end - ball.pos).normalize_or_zero();
@@ -548,7 +571,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                             // Set cooldown to prevent immediate re-collision
                             ball.paddle_cooldown = 8;
                             state.events.push(super::state::GameEvent::PaddleHit);
-                            
+
                             // 🔥 Paddle hit sparks - emit from contact point, spread around normal
                             let spark_count = 8;
                             let normal_angle = normal.y.atan2(normal.x);
@@ -560,7 +583,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                                 let rand1 = (hash % 1000) as f32 / 1000.0 - 0.5; // -0.5 to 0.5
                                 let rand2 = ((hash >> 10) % 1000) as f32 / 1000.0;
                                 let rand3 = ((hash >> 20) % 1000) as f32 / 1000.0;
-                                
+
                                 // Spread sparks in cone around normal
                                 let spark_angle = normal_angle + rand1 * spread;
                                 let spark_speed = 100.0 + rand2 * 150.0;
@@ -574,7 +597,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                                 });
                             }
                             state.screen_shake = (state.screen_shake + 0.1).min(1.0);
-                            
+
                             continue; // Skip normal movement for this ball
                         }
                     }
@@ -619,7 +642,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
 
                             ball.paddle_cooldown = 8;
                             state.events.push(super::state::GameEvent::PaddleHit);
-                            
+
                             // 🔥 Paddle hit sparks - emit from contact, spread around normal
                             let spark_count = 8;
                             let normal_angle = paddle_result.normal.y.atan2(paddle_result.normal.x);
@@ -631,7 +654,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                                 let rand1 = (hash % 1000) as f32 / 1000.0 - 0.5;
                                 let rand2 = ((hash >> 10) % 1000) as f32 / 1000.0;
                                 let rand3 = ((hash >> 20) % 1000) as f32 / 1000.0;
-                                
+
                                 let spark_angle = normal_angle + rand1 * spread;
                                 let spark_speed = 100.0 + rand2 * 150.0;
                                 let spark_dir = Vec2::new(spark_angle.cos(), spark_angle.sin());
@@ -826,7 +849,9 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                     state.blocks[idx].hp = state.blocks[idx].hp.saturating_sub(1);
                     if state.blocks[idx].hp == 0 {
                         let block = state.blocks.remove(idx);
-                        state.events.push(super::state::GameEvent::BlockBreak(block_kind));
+                        state
+                            .events
+                            .push(super::state::GameEvent::BlockBreak(block_kind));
 
                         // SPAWN PARTICLES! 🎆
                         let mid_angle = (block.arc.theta_start + block.arc.theta_end) / 2.0;
@@ -854,9 +879,11 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                         // Spawn 20-40 particles - MAKE IT RAIN!
                         // Disintegration burst - lots of tiny particles in all directions
                         // Minimum 25 particles to ensure visibility
-                        let particle_count = ((30.0 + arc_span * 40.0).min(60.0) as usize).max(25) + particle_bonus;
+                        let particle_count =
+                            ((30.0 + arc_span * 40.0).min(60.0) as usize).max(25) + particle_bonus;
                         // Include block ID in seed so each block gets unique particles
-                        let particle_seed = state.time_ticks as u32 ^ block.id.wrapping_mul(2654435761);
+                        let particle_seed =
+                            state.time_ticks as u32 ^ block.id.wrapping_mul(2654435761);
 
                         for i in 0..particle_count {
                             if state.particles.len() >= super::state::MAX_PARTICLES {
@@ -866,7 +893,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                             let hash = particle_seed
                                 .wrapping_mul(2654435761)
                                 .wrapping_add(i as u32 * 7919);
-                            
+
                             // Spawn along the block arc
                             let angle_offset =
                                 ((hash % 1000) as f32 / 1000.0 - 0.5) * arc_span * 1.2;
@@ -883,7 +910,8 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                             // Velocity: BURST in ALL directions (full 360°)
                             // Re-hash for velocity to get independent random values
                             let vel_hash = hash.wrapping_mul(1664525).wrapping_add(1013904223);
-                            let vel_angle = (vel_hash % 10000) as f32 / 10000.0 * std::f32::consts::TAU;
+                            let vel_angle =
+                                (vel_hash % 10000) as f32 / 10000.0 * std::f32::consts::TAU;
                             let speed_hash = vel_hash.wrapping_mul(22695477).wrapping_add(1);
                             let base_speed = 80.0 + (speed_hash % 200) as f32;
                             let vel = Vec2::new(vel_angle.cos(), vel_angle.sin()) * base_speed;
@@ -1065,8 +1093,9 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                                         .wrapping_add(i as u32 * 7919);
                                     let angle_offset =
                                         ((hash % 1000) as f32 / 1000.0 - 0.5) * arc_span * 1.2;
-                                    let radius_offset =
-                                        ((hash / 1000 % 1000) as f32 / 1000.0 - 0.5) * block.arc.thickness;
+                                    let radius_offset = ((hash / 1000 % 1000) as f32 / 1000.0
+                                        - 0.5)
+                                        * block.arc.thickness;
                                     let spawn_angle = mid_angle + angle_offset;
                                     let spawn_radius = block.arc.radius + radius_offset;
                                     let pos = Vec2::new(
@@ -1074,11 +1103,15 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                                         spawn_angle.sin() * spawn_radius,
                                     );
                                     // Burst in all directions - re-hash for independent random values
-                                    let vel_hash = hash.wrapping_mul(1664525).wrapping_add(1013904223);
-                                    let vel_angle = (vel_hash % 10000) as f32 / 10000.0 * std::f32::consts::TAU;
-                                    let speed_hash = vel_hash.wrapping_mul(22695477).wrapping_add(1);
+                                    let vel_hash =
+                                        hash.wrapping_mul(1664525).wrapping_add(1013904223);
+                                    let vel_angle =
+                                        (vel_hash % 10000) as f32 / 10000.0 * std::f32::consts::TAU;
+                                    let speed_hash =
+                                        vel_hash.wrapping_mul(22695477).wrapping_add(1);
                                     let base_speed = 70.0 + (speed_hash % 180) as f32;
-                                    let vel = Vec2::new(vel_angle.cos(), vel_angle.sin()) * base_speed;
+                                    let vel =
+                                        Vec2::new(vel_angle.cos(), vel_angle.sin()) * base_speed;
                                     let size_hash = speed_hash.wrapping_mul(69069).wrapping_add(1);
                                     let size = 1.5 + (size_hash % 200) as f32 / 100.0;
 
@@ -1090,7 +1123,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                                         size,
                                     });
                                 }
-                                
+
                                 // Score for explosion kills too
                                 let base_score = match block.kind {
                                     super::state::BlockKind::Glass => 10,
@@ -1131,13 +1164,19 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                 let ball_pos = ball.pos;
                 'arc_check: for i in 0..state.blocks.len() {
                     let b1 = &state.blocks[i];
-                    if b1.kind != super::state::BlockKind::Electric { continue; }
-                    
+                    if b1.kind != super::state::BlockKind::Electric {
+                        continue;
+                    }
+
                     for j in (i + 1)..state.blocks.len() {
                         let b2 = &state.blocks[j];
-                        if b2.kind != super::state::BlockKind::Electric { continue; }
-                        if b2.ring_id != b1.ring_id { continue; } // Same ring only
-                        
+                        if b2.kind != super::state::BlockKind::Electric {
+                            continue;
+                        }
+                        if b2.ring_id != b1.ring_id {
+                            continue;
+                        } // Same ring only
+
                         // Find closest edges (same logic as shader)
                         let edges = [
                             (b1.arc.theta_end, b2.arc.theta_start),
@@ -1145,37 +1184,45 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                             (b1.arc.theta_start, b2.arc.theta_start),
                             (b1.arc.theta_start, b2.arc.theta_end),
                         ];
-                        
+
                         let mut min_gap = f32::MAX;
                         let mut best_e1 = 0.0_f32;
                         let mut best_e2 = 0.0_f32;
                         for (e1, e2) in edges {
                             let mut d = (e1 - e2).abs();
-                            if d > std::f32::consts::PI { d = std::f32::consts::TAU - d; }
+                            if d > std::f32::consts::PI {
+                                d = std::f32::consts::TAU - d;
+                            }
                             if d < min_gap {
                                 min_gap = d;
                                 best_e1 = e1;
                                 best_e2 = e2;
                             }
                         }
-                        
+
                         // Only check if blocks are close enough to arc (< 0.4 rad)
-                        if min_gap > 0.4 { continue; }
-                        
+                        if min_gap > 0.4 {
+                            continue;
+                        }
+
                         // Get edge positions
-                        let p1 = Vec2::new(best_e1.cos() * b1.arc.radius, best_e1.sin() * b1.arc.radius);
-                        let p2 = Vec2::new(best_e2.cos() * b2.arc.radius, best_e2.sin() * b2.arc.radius);
-                        
+                        let p1 =
+                            Vec2::new(best_e1.cos() * b1.arc.radius, best_e1.sin() * b1.arc.radius);
+                        let p2 =
+                            Vec2::new(best_e2.cos() * b2.arc.radius, best_e2.sin() * b2.arc.radius);
+
                         // Distance from ball to line segment
                         let line_dir = p2 - p1;
                         let line_len = line_dir.length();
-                        if line_len < 1.0 { continue; }
+                        if line_len < 1.0 {
+                            continue;
+                        }
                         let line_norm = line_dir / line_len;
                         let to_ball = ball_pos - p1;
                         let proj = to_ball.dot(line_norm).clamp(0.0, line_len);
                         let closest = p1 + line_norm * proj;
                         let dist = (ball_pos - closest).length();
-                        
+
                         // Arc jumps to ball if within 30px!
                         if dist < 30.0 {
                             ball.vel *= 1.1; // 10% speed boost from arc
@@ -1335,7 +1382,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
             // Decay timed effects
             state.effects.slow_ticks = state.effects.slow_ticks.saturating_sub(1);
             state.effects.piercing_ticks = state.effects.piercing_ticks.saturating_sub(1);
-            
+
             // Widen stacks decay one at a time
             if state.effects.widen_ticks > 0 {
                 state.effects.widen_ticks -= 1;
@@ -1355,21 +1402,22 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
 
             // Calculate target paddle width (+50% per stack, capped at 3x)
             let target_width = if state.effects.widen_stacks > 0 {
-                (PADDLE_ARC_WIDTH * (1.0 + 0.5 * state.effects.widen_stacks as f32)).min(PADDLE_ARC_WIDTH * 3.0)
+                (PADDLE_ARC_WIDTH * (1.0 + 0.5 * state.effects.widen_stacks as f32))
+                    .min(PADDLE_ARC_WIDTH * 3.0)
             } else {
                 PADDLE_ARC_WIDTH
             };
-            
+
             // Spring-damper physics for bouncy overshoot
-            let spring_k = 150.0;  // Spring stiffness (higher = faster)
-            let damping = 8.0;     // Damping (lower = more bouncy/overshoot)
+            let spring_k = 150.0; // Spring stiffness (higher = faster)
+            let damping = 8.0; // Damping (lower = more bouncy/overshoot)
             let diff = target_width - state.paddle.arc_width;
-            
+
             // F = -kx - bv (spring force - damping force)
             let spring_force = spring_k * diff;
             let damping_force = damping * state.paddle.arc_width_vel;
             let acceleration = spring_force - damping_force;
-            
+
             state.paddle.arc_width_vel += acceleration * dt;
             state.paddle.arc_width += state.paddle.arc_width_vel * dt;
 
@@ -1487,7 +1535,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                     let rand1 = (hash % 1000) as f32 / 1000.0;
                     let rand2 = ((hash >> 10) % 1000) as f32 / 1000.0;
                     let rand3 = ((hash >> 20) % 1000) as f32 / 1000.0;
-                    
+
                     let angle = std::f32::consts::TAU * (i as f32 / ring_particles as f32);
                     let outward = Vec2::new(angle.cos(), angle.sin());
                     let spawn_radius = 100.0 + rand1 * 50.0;
@@ -1507,7 +1555,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                     let rand1 = (hash % 1000) as f32 / 1000.0;
                     let rand2 = ((hash >> 10) % 1000) as f32 / 1000.0;
                     let rand3 = ((hash >> 20) % 1000) as f32 / 1000.0;
-                    
+
                     let angle = rand1 * std::f32::consts::TAU;
                     let outward = Vec2::new(angle.cos(), angle.sin());
                     state.particles.push(super::state::Particle {
@@ -1522,7 +1570,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                 state.screen_shake = 1.0;
                 state.wave_flash = 1.0;
                 state.events.push(super::state::GameEvent::WaveClear);
-                
+
                 // Remove invincible blocks too when wave clears
                 state.blocks.clear();
                 state.wave_index += 1;
@@ -1573,8 +1621,10 @@ fn reflect_velocity(vel: Vec2, normal: Vec2) -> Vec2 {
 
 /// Calculate arena radius for a given wave
 pub fn arena_radius_for_wave(wave: u32) -> f32 {
-    use super::state::{BASE_ARENA_RADIUS, MAX_ARENA_RADIUS, ARENA_GROWTH_PER_WAVE, ARENA_GROWTH_START_WAVE};
-    
+    use super::state::{
+        ARENA_GROWTH_PER_WAVE, ARENA_GROWTH_START_WAVE, BASE_ARENA_RADIUS, MAX_ARENA_RADIUS,
+    };
+
     if wave < ARENA_GROWTH_START_WAVE {
         BASE_ARENA_RADIUS
     } else {
@@ -1587,14 +1637,19 @@ pub fn arena_radius_for_wave(wave: u32) -> f32 {
 /// Generate wave with variable blocks, widths, and layers
 pub fn generate_wave(state: &mut GameState) {
     use super::arc::ArcSegment;
-    use super::state::{Block, BlockKind, LAYER_SPACING, WALL_MARGIN, INNER_MARGIN};
+    use super::state::{Block, BlockKind, INNER_MARGIN, LAYER_SPACING, WALL_MARGIN};
     use std::f32::consts::PI;
 
     let wave = state.wave_index;
 
     // Update arena radius for this wave
     let new_radius = arena_radius_for_wave(wave);
-    log::info!("Wave {} arena radius: {} -> {}", wave, state.arena_radius, new_radius);
+    log::info!(
+        "Wave {} arena radius: {} -> {}",
+        wave,
+        state.arena_radius,
+        new_radius
+    );
     state.arena_radius = new_radius;
 
     // Deterministic "randomness" based on wave number AND game seed
@@ -1606,18 +1661,24 @@ pub fn generate_wave(state: &mut GameState) {
     // Calculate layer radii dynamically based on arena size
     // Layers go from outer (near wall) to inner (near black hole)
     // More space = more layers!
-    let outer_radius = state.arena_radius - WALL_MARGIN;  // Start 25px from wall
-    let inner_radius = INNER_MARGIN;  // Stop 120px from center (above paddle)
+    let outer_radius = state.arena_radius - WALL_MARGIN; // Start 25px from wall
+    let inner_radius = INNER_MARGIN; // Stop 120px from center (above paddle)
     let available_space = outer_radius - inner_radius;
-    
+
     // Calculate how many layers can fit
     let max_possible_layers = (available_space / LAYER_SPACING).floor() as u32;
-    
+
     // Number of layers based on wave (start with fewer, add more)
     let desired_layers = 1 + (wave / 2).min(max_possible_layers);
     let num_layers = desired_layers.min(max_possible_layers).max(1);
-    
-    log::info!("Wave {}: arena={}, space={}, layers={}", wave, state.arena_radius, available_space, num_layers);
+
+    log::info!(
+        "Wave {}: arena={}, space={}, layers={}",
+        wave,
+        state.arena_radius,
+        available_space,
+        num_layers
+    );
 
     // Special wave: Jello Madness! Every 10th wave starting at wave 10
     let jello_madness = wave >= 10 && wave % 10 == 0;
@@ -1631,7 +1692,7 @@ pub fn generate_wave(state: &mut GameState) {
     let mut magnet_count = 0u32;
     let mut ghost_count = 0u32;
     let mut portal_count = 0u32;
-    
+
     // Max counts scale slightly with layers
     let max_electric = 4 + num_layers;
     let max_crystal = 3 + num_layers;
@@ -1759,7 +1820,7 @@ pub fn generate_wave(state: &mut GameState) {
             };
 
             // Thicker blocks contain powerups! ~10% chance, not on invincible/portal
-            let can_have_powerup = kind != BlockKind::Invincible 
+            let can_have_powerup = kind != BlockKind::Invincible
                 && !matches!(kind, BlockKind::Portal { .. })
                 && wave > 1;
             // Use hash for better distribution (block_seed has bad divisibility patterns)

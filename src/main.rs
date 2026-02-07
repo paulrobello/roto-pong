@@ -9,12 +9,12 @@ use wasm_bindgen::prelude::*;
 mod wasm_game {
     use std::cell::RefCell;
     use std::rc::Rc;
-    use wasm_bindgen::prelude::*;
     use wasm_bindgen::JsCast;
+    use wasm_bindgen::prelude::*;
     use web_sys::{HtmlCanvasElement, HtmlInputElement, MouseEvent, TouchEvent};
 
     use roto_pong::consts::*;
-    use roto_pong::highscores::{format_date, HighScores};
+    use roto_pong::highscores::{HighScores, format_date};
     use roto_pong::renderer::SdfRenderState;
     use roto_pong::settings::Settings;
     use roto_pong::sim::{GameState, TickInput, tick};
@@ -463,11 +463,9 @@ mod wasm_game {
             }
             self.score_submitted = true;
             let timestamp = js_sys::Date::now();
-            let rank = self.highscores.add_score(
-                self.state.score,
-                self.state.wave_index + 1,
-                timestamp,
-            );
+            let rank =
+                self.highscores
+                    .add_score(self.state.score, self.state.wave_index + 1, timestamp);
             if rank.is_some() {
                 self.highscores.save();
             }
@@ -499,7 +497,9 @@ mod wasm_game {
 
         if let Some(list) = document.get_element_by_id("highscores-list") {
             if highscores.is_empty() {
-                list.set_inner_html(r#"<div class="highscore-empty">No scores yet. Play to set a record!</div>"#);
+                list.set_inner_html(
+                    r#"<div class="highscore-empty">No scores yet. Play to set a record!</div>"#,
+                );
             } else {
                 let mut html = String::new();
                 for (i, entry) in highscores.entries.iter().enumerate() {
@@ -913,7 +913,9 @@ mod wasm_game {
         let qualities = ["low", "medium", "high"];
         let current_quality = settings.quality.as_str().to_lowercase();
         for q in qualities {
-            if let Ok(Some(btn)) = document.query_selector(&format!(".quality-btn[data-quality='{}']", q)) {
+            if let Ok(Some(btn)) =
+                document.query_selector(&format!(".quality-btn[data-quality='{}']", q))
+            {
                 if q == current_quality {
                     let _ = btn.set_attribute("class", "quality-btn active");
                 } else {
@@ -935,7 +937,9 @@ mod wasm_game {
             ("mute_on_blur", settings.mute_on_blur),
         ];
         for (name, value) in toggles {
-            if let Ok(Some(toggle)) = document.query_selector(&format!(".toggle[data-setting='{}']", name)) {
+            if let Ok(Some(toggle)) =
+                document.query_selector(&format!(".toggle[data-setting='{}']", name))
+            {
                 if value {
                     let _ = toggle.set_attribute("class", "toggle active");
                 } else {
@@ -950,7 +954,10 @@ mod wasm_game {
             input.set_value(&format!("{}", (settings.master_volume * 100.0) as u32));
         }
         if let Some(el) = document.get_element_by_id("master-volume-value") {
-            el.set_text_content(Some(&format!("{}%", (settings.master_volume * 100.0) as u32)));
+            el.set_text_content(Some(&format!(
+                "{}%",
+                (settings.master_volume * 100.0) as u32
+            )));
         }
         if let Some(slider) = document.get_element_by_id("sfx-volume") {
             let input: web_sys::HtmlInputElement = slider.dyn_into().unwrap();
@@ -1011,22 +1018,28 @@ mod wasm_game {
             for i in 0..btns.length() {
                 if let Some(btn) = btns.get(i) {
                     let game = game.clone();
-                    let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::MouseEvent| {
-                        if let Some(target) = event.target() {
-                            let el: web_sys::Element = target.dyn_into().unwrap();
-                            if let Some(quality_str) = el.get_attribute("data-quality") {
-                                if let Some(preset) = roto_pong::settings::QualityPreset::from_str(&quality_str) {
-                                    let mut g = game.borrow_mut();
-                                    g.settings.apply_preset(preset);
-                                    g.settings.save();
-                                    drop(g);
-                                    sync_settings_ui(&game.borrow().settings);
-                                    log::info!("Quality set to: {:?}", preset);
+                    let closure =
+                        Closure::<dyn FnMut(_)>::new(move |event: web_sys::MouseEvent| {
+                            if let Some(target) = event.target() {
+                                let el: web_sys::Element = target.dyn_into().unwrap();
+                                if let Some(quality_str) = el.get_attribute("data-quality") {
+                                    if let Some(preset) =
+                                        roto_pong::settings::QualityPreset::from_str(&quality_str)
+                                    {
+                                        let mut g = game.borrow_mut();
+                                        g.settings.apply_preset(preset);
+                                        g.settings.save();
+                                        drop(g);
+                                        sync_settings_ui(&game.borrow().settings);
+                                        log::info!("Quality set to: {:?}", preset);
+                                    }
                                 }
                             }
-                        }
-                    });
-                    let _ = btn.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
+                        });
+                    let _ = btn.add_event_listener_with_callback(
+                        "click",
+                        closure.as_ref().unchecked_ref(),
+                    );
                     closure.forget();
                 }
             }
@@ -1037,49 +1050,54 @@ mod wasm_game {
             for i in 0..toggles.length() {
                 if let Some(toggle) = toggles.get(i) {
                     let game = game.clone();
-                    let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::MouseEvent| {
-                        if let Some(target) = event.target() {
-                            // Might click the knob, so find the toggle parent
-                            let el: web_sys::Element = target.dyn_into().unwrap();
-                            let toggle_el = if el.class_list().contains("toggle") {
-                                el
-                            } else if let Some(parent) = el.parent_element() {
-                                parent
-                            } else {
-                                return;
-                            };
-
-                            if let Some(setting_name) = toggle_el.get_attribute("data-setting") {
-                                let mut g = game.borrow_mut();
-                                let new_value = !toggle_el.class_list().contains("active");
-                                let setting_key: &str = &setting_name;
-
-                                match setting_key {
-                                    "screen_shake" => g.settings.screen_shake = new_value,
-                                    "trails" => g.settings.trails = new_value,
-                                    "particles" => g.settings.particles = new_value,
-                                    "wave_flash" => g.settings.wave_flash = new_value,
-                                    "powerup_effects" => g.settings.powerup_effects = new_value,
-                                    "show_fps" => g.settings.show_fps = new_value,
-                                    "reduced_motion" => g.settings.reduced_motion = new_value,
-                                    "high_contrast" => g.settings.high_contrast = new_value,
-                                    "mute_on_blur" => g.settings.mute_on_blur = new_value,
-                                    _ => {}
-                                }
-                                g.settings.save();
-
-                                // Update toggle visual
-                                if new_value {
-                                    let _ = toggle_el.set_attribute("class", "toggle active");
+                    let closure =
+                        Closure::<dyn FnMut(_)>::new(move |event: web_sys::MouseEvent| {
+                            if let Some(target) = event.target() {
+                                // Might click the knob, so find the toggle parent
+                                let el: web_sys::Element = target.dyn_into().unwrap();
+                                let toggle_el = if el.class_list().contains("toggle") {
+                                    el
+                                } else if let Some(parent) = el.parent_element() {
+                                    parent
                                 } else {
-                                    let _ = toggle_el.set_attribute("class", "toggle");
-                                }
+                                    return;
+                                };
 
-                                log::info!("Setting {} = {}", setting_name, new_value);
+                                if let Some(setting_name) = toggle_el.get_attribute("data-setting")
+                                {
+                                    let mut g = game.borrow_mut();
+                                    let new_value = !toggle_el.class_list().contains("active");
+                                    let setting_key: &str = &setting_name;
+
+                                    match setting_key {
+                                        "screen_shake" => g.settings.screen_shake = new_value,
+                                        "trails" => g.settings.trails = new_value,
+                                        "particles" => g.settings.particles = new_value,
+                                        "wave_flash" => g.settings.wave_flash = new_value,
+                                        "powerup_effects" => g.settings.powerup_effects = new_value,
+                                        "show_fps" => g.settings.show_fps = new_value,
+                                        "reduced_motion" => g.settings.reduced_motion = new_value,
+                                        "high_contrast" => g.settings.high_contrast = new_value,
+                                        "mute_on_blur" => g.settings.mute_on_blur = new_value,
+                                        _ => {}
+                                    }
+                                    g.settings.save();
+
+                                    // Update toggle visual
+                                    if new_value {
+                                        let _ = toggle_el.set_attribute("class", "toggle active");
+                                    } else {
+                                        let _ = toggle_el.set_attribute("class", "toggle");
+                                    }
+
+                                    log::info!("Setting {} = {}", setting_name, new_value);
+                                }
                             }
-                        }
-                    });
-                    let _ = toggle.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
+                        });
+                    let _ = toggle.add_event_listener_with_callback(
+                        "click",
+                        closure.as_ref().unchecked_ref(),
+                    );
                     closure.forget();
                 }
             }
@@ -1099,7 +1117,7 @@ mod wasm_game {
                         let input: web_sys::HtmlInputElement = target.dyn_into().unwrap();
                         let value: f32 = input.value().parse().unwrap_or(80.0);
                         let normalized = value / 100.0;
-                        
+
                         let mut g = game.borrow_mut();
                         match setting_name.as_str() {
                             "master_volume" => {
@@ -1113,7 +1131,7 @@ mod wasm_game {
                             _ => {}
                         }
                         g.settings.save();
-                        
+
                         // Update value display
                         let document = web_sys::window().unwrap().document().unwrap();
                         if let Some(el) = document.get_element_by_id(&value_id) {
@@ -1121,7 +1139,8 @@ mod wasm_game {
                         }
                     }
                 });
-                let _ = slider.add_event_listener_with_callback("input", closure.as_ref().unchecked_ref());
+                let _ = slider
+                    .add_event_listener_with_callback("input", closure.as_ref().unchecked_ref());
                 closure.forget();
             }
         }

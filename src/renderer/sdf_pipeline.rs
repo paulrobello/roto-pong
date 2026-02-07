@@ -72,8 +72,8 @@ struct BlockData {
     thickness: f32,
     kind: u32,
     wobble: f32,
-    block_id: u32,  // For matching sliding balls
-    hp: u32,        // Current HP for damage indicator
+    block_id: u32,   // For matching sliding balls
+    hp: u32,         // Current HP for damage indicator
     visibility: f32, // Ghost block visibility (0-1)
     pole_flags: u32, // Magnet: bit0=red_active, bit1=silver_active
     ring_id: u32,    // Ring/layer index (for electric arc connections)
@@ -95,7 +95,7 @@ struct ParticleData {
     size: f32,
     life: f32,
     color: u32,
-    vel_x: f32,  // For motion blur/stretching
+    vel_x: f32, // For motion blur/stretching
     vel_y: f32,
     _pad3: u32,
 }
@@ -164,7 +164,7 @@ impl SdfRenderState {
         log::info!("Surface formats: {:?}", surface_caps.formats);
         log::info!("Surface alpha modes: {:?}", surface_caps.alpha_modes);
         log::info!("Surface present modes: {:?}", surface_caps.present_modes);
-        
+
         let surface_format = surface_caps
             .formats
             .iter()
@@ -173,7 +173,7 @@ impl SdfRenderState {
             .unwrap_or(surface_caps.formats[0]);
 
         log::info!("Using surface format: {:?}", surface_format);
-        
+
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
@@ -184,7 +184,12 @@ impl SdfRenderState {
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
         };
-        log::info!("Surface config: {}x{}, alpha: {:?}", width, height, config.alpha_mode);
+        log::info!(
+            "Surface config: {}x{}, alpha: {:?}",
+            width,
+            height,
+            config.alpha_mode
+        );
         surface.configure(&device, &config);
 
         // Create shader
@@ -462,11 +467,7 @@ impl SdfRenderState {
         // Apply settings for trails
         let trail_count = if settings.trails {
             let quality_factor = settings.quality.trail_quality();
-            let raw_count = state
-                .balls
-                .iter()
-                .map(|b| b.trail.len())
-                .sum::<usize>();
+            let raw_count = state.balls.iter().map(|b| b.trail.len()).sum::<usize>();
             ((raw_count as f32 * quality_factor) as usize).min(MAX_TRAIL) as u32
         } else {
             0
@@ -482,16 +483,16 @@ impl SdfRenderState {
         // When arena grows, zoom out to keep everything visible
         let base_arena = 400.0;
         let base_viewport = base_arena * 1.1;
-        
+
         // Calculate target zoom to fit current arena
         let target_zoom = state.arena_radius * 1.1 / base_viewport;
-        
+
         // Smooth zoom transitions
         let dt = 1.0 / 60.0;
         let zoom_smooth = 2.0;
         self.camera_zoom += (target_zoom - self.camera_zoom) * zoom_smooth * dt;
         self.camera_zoom = self.camera_zoom.clamp(1.0, 2.0);
-        
+
         // Keep camera centered (arena is circular, no need to follow ball)
         self.camera_pos = [0.0, 0.0];
 
@@ -601,7 +602,7 @@ impl SdfRenderState {
                 crate::sim::BlockKind::Magnet => 8,
                 crate::sim::BlockKind::Ghost => 9,
             };
-            
+
             // Compute pole_flags for magnet blocks (chain detection)
             let mut pole_flags: u32 = 0b11; // Default: both ends active
             if block.kind == crate::sim::BlockKind::Magnet {
@@ -609,12 +610,18 @@ impl SdfRenderState {
                 let radius_tolerance = 5.0_f32;
                 let mut red_active = true;
                 let mut silver_active = true;
-                
+
                 for other in &state.blocks {
-                    if other.id == block.id { continue; }
-                    if other.kind != crate::sim::BlockKind::Magnet { continue; }
-                    if (other.arc.radius - block.arc.radius).abs() > radius_tolerance { continue; }
-                    
+                    if other.id == block.id {
+                        continue;
+                    }
+                    if other.kind != crate::sim::BlockKind::Magnet {
+                        continue;
+                    }
+                    if (other.arc.radius - block.arc.radius).abs() > radius_tolerance {
+                        continue;
+                    }
+
                     // Check if other's theta_end connects to our theta_start (red end)
                     let diff_to_red = (other.arc.theta_end - block.arc.theta_start).abs();
                     let tau = std::f32::consts::TAU;
@@ -622,7 +629,7 @@ impl SdfRenderState {
                     if diff_to_red_wrapped < angle_tolerance {
                         red_active = false;
                     }
-                    
+
                     // Check if other's theta_start connects to our theta_end (silver end)
                     let diff_to_silver = (other.arc.theta_start - block.arc.theta_end).abs();
                     let diff_to_silver_wrapped = (diff_to_silver - tau).abs().min(diff_to_silver);
@@ -630,10 +637,10 @@ impl SdfRenderState {
                         silver_active = false;
                     }
                 }
-                
+
                 pole_flags = (if red_active { 1 } else { 0 }) | (if silver_active { 2 } else { 0 });
             }
-            
+
             blocks_data[i] = BlockData {
                 theta_start: block.arc.theta_start,
                 theta_end: block.arc.theta_end,

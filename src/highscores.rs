@@ -30,7 +30,9 @@ impl HighScores {
 
     /// Create empty leaderboard
     pub fn new() -> Self {
-        Self { entries: Vec::new() }
+        Self {
+            entries: Vec::new(),
+        }
     }
 
     /// Check if a score qualifies for the leaderboard

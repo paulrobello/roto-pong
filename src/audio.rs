@@ -2,7 +2,7 @@
 //!
 //! Procedurally generated sound effects - no external files needed!
 
-use web_sys::{AudioContext, OscillatorType, GainNode, OscillatorNode};
+use web_sys::{AudioContext, GainNode, OscillatorNode, OscillatorType};
 
 /// Sound effect types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,7 +109,7 @@ impl AudioManager {
         }
 
         let Some(ctx) = &self.ctx else { return };
-        
+
         // Resume context if suspended (browsers require user gesture)
         if ctx.state() == web_sys::AudioContextState::Suspended {
             let _ = ctx.resume();
@@ -138,52 +138,71 @@ impl AudioManager {
     // === Sound generators ===
 
     /// Create an oscillator with gain envelope
-    fn create_osc(&self, ctx: &AudioContext, freq: f32, osc_type: OscillatorType) -> Option<(OscillatorNode, GainNode)> {
+    fn create_osc(
+        &self,
+        ctx: &AudioContext,
+        freq: f32,
+        osc_type: OscillatorType,
+    ) -> Option<(OscillatorNode, GainNode)> {
         let osc = ctx.create_oscillator().ok()?;
         let gain = ctx.create_gain().ok()?;
-        
+
         osc.set_type(osc_type);
         osc.frequency().set_value(freq);
         osc.connect_with_audio_node(&gain).ok()?;
         gain.connect_with_audio_node(&ctx.destination()).ok()?;
-        
+
         Some((osc, gain))
     }
 
     /// Paddle hit - solid thump
     fn play_paddle_hit(&self, ctx: &AudioContext, vol: f32) {
-        let Some((osc, gain)) = self.create_osc(ctx, 150.0, OscillatorType::Sine) else { return };
+        let Some((osc, gain)) = self.create_osc(ctx, 150.0, OscillatorType::Sine) else {
+            return;
+        };
         let t = ctx.current_time();
-        
+
         gain.gain().set_value_at_time(vol * 0.6, t).ok();
-        gain.gain().exponential_ramp_to_value_at_time(0.01, t + 0.1).ok();
+        gain.gain()
+            .exponential_ramp_to_value_at_time(0.01, t + 0.1)
+            .ok();
         osc.frequency().set_value_at_time(150.0, t).ok();
-        osc.frequency().exponential_ramp_to_value_at_time(60.0, t + 0.1).ok();
-        
+        osc.frequency()
+            .exponential_ramp_to_value_at_time(60.0, t + 0.1)
+            .ok();
+
         osc.start().ok();
         osc.stop_with_when(t + 0.15).ok();
     }
 
     /// Wall hit - higher ping
     fn play_wall_hit(&self, ctx: &AudioContext, vol: f32) {
-        let Some((osc, gain)) = self.create_osc(ctx, 400.0, OscillatorType::Sine) else { return };
+        let Some((osc, gain)) = self.create_osc(ctx, 400.0, OscillatorType::Sine) else {
+            return;
+        };
         let t = ctx.current_time();
-        
+
         gain.gain().set_value_at_time(vol * 0.3, t).ok();
-        gain.gain().exponential_ramp_to_value_at_time(0.01, t + 0.08).ok();
-        
+        gain.gain()
+            .exponential_ramp_to_value_at_time(0.01, t + 0.08)
+            .ok();
+
         osc.start().ok();
         osc.stop_with_when(t + 0.1).ok();
     }
 
     /// Block hit (no break) - soft tap
     fn play_block_hit(&self, ctx: &AudioContext, vol: f32) {
-        let Some((osc, gain)) = self.create_osc(ctx, 300.0, OscillatorType::Triangle) else { return };
+        let Some((osc, gain)) = self.create_osc(ctx, 300.0, OscillatorType::Triangle) else {
+            return;
+        };
         let t = ctx.current_time();
-        
+
         gain.gain().set_value_at_time(vol * 0.25, t).ok();
-        gain.gain().exponential_ramp_to_value_at_time(0.01, t + 0.05).ok();
-        
+        gain.gain()
+            .exponential_ramp_to_value_at_time(0.01, t + 0.05)
+            .ok();
+
         osc.start().ok();
         osc.stop_with_when(t + 0.08).ok();
     }
@@ -191,11 +210,13 @@ impl AudioManager {
     /// Glass break - crackling zap shatter
     fn play_glass_break(&self, ctx: &AudioContext, vol: f32) {
         let t = ctx.current_time();
-        
+
         // Crackling frequency jumps
         if let Some((osc, gain)) = self.create_osc(ctx, 100.0, OscillatorType::Sawtooth) {
             gain.gain().set_value_at_time(vol * 0.35, t).ok();
-            gain.gain().exponential_ramp_to_value_at_time(0.01, t + 0.18).ok();
+            gain.gain()
+                .exponential_ramp_to_value_at_time(0.01, t + 0.18)
+                .ok();
             osc.frequency().set_value_at_time(100.0, t).ok();
             osc.frequency().set_value_at_time(3500.0, t + 0.01).ok();
             osc.frequency().set_value_at_time(200.0, t + 0.02).ok();
@@ -210,11 +231,13 @@ impl AudioManager {
             osc.start().ok();
             osc.stop_with_when(t + 0.2).ok();
         }
-        
+
         // High frequency sizzle
         if let Some((osc, gain)) = self.create_osc(ctx, 6000.0, OscillatorType::Square) {
             gain.gain().set_value_at_time(vol * 0.12, t).ok();
-            gain.gain().exponential_ramp_to_value_at_time(0.01, t + 0.1).ok();
+            gain.gain()
+                .exponential_ramp_to_value_at_time(0.01, t + 0.1)
+                .ok();
             osc.frequency().set_value_at_time(6000.0, t).ok();
             osc.frequency().set_value_at_time(8000.0, t + 0.02).ok();
             osc.frequency().set_value_at_time(5000.0, t + 0.04).ok();
@@ -222,11 +245,13 @@ impl AudioManager {
             osc.start().ok();
             osc.stop_with_when(t + 0.12).ok();
         }
-        
+
         // Bass thump
         if let Some((osc, gain)) = self.create_osc(ctx, 60.0, OscillatorType::Sine) {
             gain.gain().set_value_at_time(vol * 0.3, t).ok();
-            gain.gain().exponential_ramp_to_value_at_time(0.01, t + 0.1).ok();
+            gain.gain()
+                .exponential_ramp_to_value_at_time(0.01, t + 0.1)
+                .ok();
             osc.start().ok();
             osc.stop_with_when(t + 0.12).ok();
         }
@@ -235,32 +260,40 @@ impl AudioManager {
     /// Armored break - deep metallic clang
     fn play_armored_break(&self, ctx: &AudioContext, vol: f32) {
         let t = ctx.current_time();
-        
+
         // Deep bass impact
         if let Some((osc, gain)) = self.create_osc(ctx, 80.0, OscillatorType::Sine) {
             gain.gain().set_value_at_time(vol * 0.5, t).ok();
-            gain.gain().exponential_ramp_to_value_at_time(0.01, t + 0.25).ok();
+            gain.gain()
+                .exponential_ramp_to_value_at_time(0.01, t + 0.25)
+                .ok();
             osc.frequency().set_value_at_time(80.0, t).ok();
-            osc.frequency().exponential_ramp_to_value_at_time(40.0, t + 0.2).ok();
+            osc.frequency()
+                .exponential_ramp_to_value_at_time(40.0, t + 0.2)
+                .ok();
             osc.start().ok();
             osc.stop_with_when(t + 0.3).ok();
         }
-        
+
         // Metallic clang - lower frequencies
         if let Some((osc, gain)) = self.create_osc(ctx, 400.0, OscillatorType::Square) {
             gain.gain().set_value_at_time(vol * 0.25, t).ok();
-            gain.gain().exponential_ramp_to_value_at_time(0.01, t + 0.2).ok();
+            gain.gain()
+                .exponential_ramp_to_value_at_time(0.01, t + 0.2)
+                .ok();
             osc.frequency().set_value_at_time(400.0, t).ok();
             osc.frequency().set_value_at_time(300.0, t + 0.05).ok();
             osc.frequency().set_value_at_time(200.0, t + 0.1).ok();
             osc.start().ok();
             osc.stop_with_when(t + 0.25).ok();
         }
-        
+
         // Mid resonance for body
         if let Some((osc, gain)) = self.create_osc(ctx, 250.0, OscillatorType::Triangle) {
             gain.gain().set_value_at_time(vol * 0.2, t).ok();
-            gain.gain().exponential_ramp_to_value_at_time(0.01, t + 0.15).ok();
+            gain.gain()
+                .exponential_ramp_to_value_at_time(0.01, t + 0.15)
+                .ok();
             osc.start().ok();
             osc.stop_with_when(t + 0.2).ok();
         }
@@ -268,21 +301,30 @@ impl AudioManager {
 
     /// Explosion - boom!
     fn play_explosion(&self, ctx: &AudioContext, vol: f32) {
-        let Some((osc, gain)) = self.create_osc(ctx, 100.0, OscillatorType::Sawtooth) else { return };
+        let Some((osc, gain)) = self.create_osc(ctx, 100.0, OscillatorType::Sawtooth) else {
+            return;
+        };
         let t = ctx.current_time();
-        
+
         gain.gain().set_value_at_time(vol * 0.5, t).ok();
-        gain.gain().exponential_ramp_to_value_at_time(0.01, t + 0.4).ok();
+        gain.gain()
+            .exponential_ramp_to_value_at_time(0.01, t + 0.4)
+            .ok();
         osc.frequency().set_value_at_time(100.0, t).ok();
-        osc.frequency().exponential_ramp_to_value_at_time(30.0, t + 0.4).ok();
-        
+        osc.frequency()
+            .exponential_ramp_to_value_at_time(30.0, t + 0.4)
+            .ok();
+
         osc.start().ok();
         osc.stop_with_when(t + 0.5).ok();
-        
+
         // Add high frequency crack
         if let Some((osc2, gain2)) = self.create_osc(ctx, 1500.0, OscillatorType::Square) {
             gain2.gain().set_value_at_time(vol * 0.2, t).ok();
-            gain2.gain().exponential_ramp_to_value_at_time(0.01, t + 0.1).ok();
+            gain2
+                .gain()
+                .exponential_ramp_to_value_at_time(0.01, t + 0.1)
+                .ok();
             osc2.start().ok();
             osc2.stop_with_when(t + 0.15).ok();
         }
@@ -290,19 +332,23 @@ impl AudioManager {
 
     /// Jello break - wobbly boing
     fn play_jello_break(&self, ctx: &AudioContext, vol: f32) {
-        let Some((osc, gain)) = self.create_osc(ctx, 400.0, OscillatorType::Sine) else { return };
+        let Some((osc, gain)) = self.create_osc(ctx, 400.0, OscillatorType::Sine) else {
+            return;
+        };
         let t = ctx.current_time();
-        
+
         gain.gain().set_value_at_time(vol * 0.35, t).ok();
-        gain.gain().exponential_ramp_to_value_at_time(0.01, t + 0.3).ok();
-        
+        gain.gain()
+            .exponential_ramp_to_value_at_time(0.01, t + 0.3)
+            .ok();
+
         // Wobble frequency
         osc.frequency().set_value_at_time(400.0, t).ok();
         osc.frequency().set_value_at_time(500.0, t + 0.05).ok();
         osc.frequency().set_value_at_time(350.0, t + 0.1).ok();
         osc.frequency().set_value_at_time(450.0, t + 0.15).ok();
         osc.frequency().set_value_at_time(300.0, t + 0.2).ok();
-        
+
         osc.start().ok();
         osc.stop_with_when(t + 0.35).ok();
     }
@@ -315,7 +361,9 @@ impl AudioManager {
             if let Some((osc, gain)) = self.create_osc(ctx, *freq, OscillatorType::Sine) {
                 let t = ctx.current_time() + delay;
                 gain.gain().set_value_at_time(vol * 0.2, t).ok();
-                gain.gain().exponential_ramp_to_value_at_time(0.01, t + 0.3).ok();
+                gain.gain()
+                    .exponential_ramp_to_value_at_time(0.01, t + 0.3)
+                    .ok();
                 osc.start_with_when(t).ok();
                 osc.stop_with_when(t + 0.35).ok();
             }
@@ -325,11 +373,13 @@ impl AudioManager {
     /// Electric break - deep humming zap
     fn play_electric_break(&self, ctx: &AudioContext, vol: f32) {
         let t = ctx.current_time();
-        
+
         // Low frequency electrical hum (60Hz mains hum style)
         if let Some((osc, gain)) = self.create_osc(ctx, 60.0, OscillatorType::Sawtooth) {
             gain.gain().set_value_at_time(vol * 0.4, t).ok();
-            gain.gain().exponential_ramp_to_value_at_time(0.01, t + 0.3).ok();
+            gain.gain()
+                .exponential_ramp_to_value_at_time(0.01, t + 0.3)
+                .ok();
             // Slight wobble in the hum
             osc.frequency().set_value_at_time(60.0, t).ok();
             osc.frequency().set_value_at_time(65.0, t + 0.05).ok();
@@ -339,11 +389,13 @@ impl AudioManager {
             osc.start().ok();
             osc.stop_with_when(t + 0.35).ok();
         }
-        
+
         // Mid-range buzzing zap
         if let Some((osc, gain)) = self.create_osc(ctx, 120.0, OscillatorType::Square) {
             gain.gain().set_value_at_time(vol * 0.25, t).ok();
-            gain.gain().exponential_ramp_to_value_at_time(0.01, t + 0.2).ok();
+            gain.gain()
+                .exponential_ramp_to_value_at_time(0.01, t + 0.2)
+                .ok();
             // Zappy jumps but staying low
             osc.frequency().set_value_at_time(120.0, t).ok();
             osc.frequency().set_value_at_time(400.0, t + 0.02).ok();
@@ -355,19 +407,23 @@ impl AudioManager {
             osc.start().ok();
             osc.stop_with_when(t + 0.25).ok();
         }
-        
+
         // Harmonic buzz (180Hz - 3rd harmonic of 60Hz)
         if let Some((osc, gain)) = self.create_osc(ctx, 180.0, OscillatorType::Triangle) {
             gain.gain().set_value_at_time(vol * 0.2, t).ok();
-            gain.gain().exponential_ramp_to_value_at_time(0.01, t + 0.25).ok();
+            gain.gain()
+                .exponential_ramp_to_value_at_time(0.01, t + 0.25)
+                .ok();
             osc.start().ok();
             osc.stop_with_when(t + 0.3).ok();
         }
-        
+
         // Sub bass punch
         if let Some((osc, gain)) = self.create_osc(ctx, 40.0, OscillatorType::Sine) {
             gain.gain().set_value_at_time(vol * 0.35, t).ok();
-            gain.gain().exponential_ramp_to_value_at_time(0.01, t + 0.15).ok();
+            gain.gain()
+                .exponential_ramp_to_value_at_time(0.01, t + 0.15)
+                .ok();
             osc.start().ok();
             osc.stop_with_when(t + 0.2).ok();
         }
@@ -375,15 +431,23 @@ impl AudioManager {
 
     /// Portal break - whoosh
     fn play_portal_break(&self, ctx: &AudioContext, vol: f32) {
-        let Some((osc, gain)) = self.create_osc(ctx, 600.0, OscillatorType::Sine) else { return };
+        let Some((osc, gain)) = self.create_osc(ctx, 600.0, OscillatorType::Sine) else {
+            return;
+        };
         let t = ctx.current_time();
-        
+
         gain.gain().set_value_at_time(0.01, t).ok();
-        gain.gain().linear_ramp_to_value_at_time(vol * 0.3, t + 0.1).ok();
-        gain.gain().exponential_ramp_to_value_at_time(0.01, t + 0.4).ok();
+        gain.gain()
+            .linear_ramp_to_value_at_time(vol * 0.3, t + 0.1)
+            .ok();
+        gain.gain()
+            .exponential_ramp_to_value_at_time(0.01, t + 0.4)
+            .ok();
         osc.frequency().set_value_at_time(600.0, t).ok();
-        osc.frequency().exponential_ramp_to_value_at_time(200.0, t + 0.4).ok();
-        
+        osc.frequency()
+            .exponential_ramp_to_value_at_time(200.0, t + 0.4)
+            .ok();
+
         osc.start().ok();
         osc.stop_with_when(t + 0.5).ok();
     }
@@ -395,7 +459,9 @@ impl AudioManager {
             if let Some((osc, gain)) = self.create_osc(ctx, *freq, OscillatorType::Sine) {
                 let t = ctx.current_time() + delay;
                 gain.gain().set_value_at_time(vol * 0.25, t).ok();
-                gain.gain().exponential_ramp_to_value_at_time(0.01, t + 0.15).ok();
+                gain.gain()
+                    .exponential_ramp_to_value_at_time(0.01, t + 0.15)
+                    .ok();
                 osc.start_with_when(t).ok();
                 osc.stop_with_when(t + 0.2).ok();
             }
@@ -404,14 +470,20 @@ impl AudioManager {
 
     /// Black hole consume - ominous descend
     fn play_black_hole(&self, ctx: &AudioContext, vol: f32) {
-        let Some((osc, gain)) = self.create_osc(ctx, 300.0, OscillatorType::Sine) else { return };
+        let Some((osc, gain)) = self.create_osc(ctx, 300.0, OscillatorType::Sine) else {
+            return;
+        };
         let t = ctx.current_time();
-        
+
         gain.gain().set_value_at_time(vol * 0.4, t).ok();
-        gain.gain().exponential_ramp_to_value_at_time(0.01, t + 0.8).ok();
+        gain.gain()
+            .exponential_ramp_to_value_at_time(0.01, t + 0.8)
+            .ok();
         osc.frequency().set_value_at_time(300.0, t).ok();
-        osc.frequency().exponential_ramp_to_value_at_time(20.0, t + 0.8).ok();
-        
+        osc.frequency()
+            .exponential_ramp_to_value_at_time(20.0, t + 0.8)
+            .ok();
+
         osc.start().ok();
         osc.stop_with_when(t + 1.0).ok();
     }
@@ -423,7 +495,9 @@ impl AudioManager {
             if let Some((osc, gain)) = self.create_osc(ctx, *freq, OscillatorType::Triangle) {
                 let t = ctx.current_time() + delay;
                 gain.gain().set_value_at_time(vol * 0.3, t).ok();
-                gain.gain().exponential_ramp_to_value_at_time(0.01, t + 0.4).ok();
+                gain.gain()
+                    .exponential_ramp_to_value_at_time(0.01, t + 0.4)
+                    .ok();
                 osc.start_with_when(t).ok();
                 osc.stop_with_when(t + 0.5).ok();
             }
@@ -432,14 +506,20 @@ impl AudioManager {
 
     /// Launch - whoosh up
     fn play_launch(&self, ctx: &AudioContext, vol: f32) {
-        let Some((osc, gain)) = self.create_osc(ctx, 200.0, OscillatorType::Triangle) else { return };
+        let Some((osc, gain)) = self.create_osc(ctx, 200.0, OscillatorType::Triangle) else {
+            return;
+        };
         let t = ctx.current_time();
-        
+
         gain.gain().set_value_at_time(vol * 0.3, t).ok();
-        gain.gain().exponential_ramp_to_value_at_time(0.01, t + 0.2).ok();
+        gain.gain()
+            .exponential_ramp_to_value_at_time(0.01, t + 0.2)
+            .ok();
         osc.frequency().set_value_at_time(200.0, t).ok();
-        osc.frequency().exponential_ramp_to_value_at_time(600.0, t + 0.15).ok();
-        
+        osc.frequency()
+            .exponential_ramp_to_value_at_time(600.0, t + 0.15)
+            .ok();
+
         osc.start().ok();
         osc.stop_with_when(t + 0.25).ok();
     }
@@ -451,7 +531,9 @@ impl AudioManager {
             if let Some((osc, gain)) = self.create_osc(ctx, *freq, OscillatorType::Sine) {
                 let t = ctx.current_time() + delay;
                 gain.gain().set_value_at_time(vol * 0.3, t).ok();
-                gain.gain().exponential_ramp_to_value_at_time(0.01, t + 0.3).ok();
+                gain.gain()
+                    .exponential_ramp_to_value_at_time(0.01, t + 0.3)
+                    .ok();
                 osc.start_with_when(t).ok();
                 osc.stop_with_when(t + 0.4).ok();
             }
@@ -465,7 +547,9 @@ impl AudioManager {
             if let Some((osc, gain)) = self.create_osc(ctx, *freq, OscillatorType::Triangle) {
                 let t = ctx.current_time() + delay;
                 gain.gain().set_value_at_time(vol * 0.25, t).ok();
-                gain.gain().exponential_ramp_to_value_at_time(0.01, t + 0.25).ok();
+                gain.gain()
+                    .exponential_ramp_to_value_at_time(0.01, t + 0.25)
+                    .ok();
                 osc.start_with_when(t).ok();
                 osc.stop_with_when(t + 0.3).ok();
             }
