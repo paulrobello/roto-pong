@@ -653,6 +653,35 @@ mod wasm_game {
         // Set up auto-pause on visibility change
         setup_auto_pause(game.clone());
 
+        // Set up resize handler for orientation changes / window resize
+        {
+            let game = game.clone();
+            let canvas = canvas.clone();
+            let closure = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::Event| {
+                let window = web_sys::window().unwrap();
+                let dpr = window.device_pixel_ratio();
+                let client_w = canvas.client_width();
+                let client_h = canvas.client_height();
+                let width = (client_w as f64 * dpr) as u32;
+                let height = (client_h as f64 * dpr) as u32;
+
+                if width > 0 && height > 0 {
+                    canvas.set_width(width);
+                    canvas.set_height(height);
+
+                    let mut g = game.borrow_mut();
+                    g.set_canvas_center(client_w as f32, client_h as f32);
+                    if let Some(ref mut render_state) = g.render_state {
+                        render_state.resize(width, height);
+                    }
+                    log::info!("Resized canvas to {}x{} (dpr: {})", width, height, dpr);
+                }
+            });
+            let _ = window
+                .add_event_listener_with_callback("resize", closure.as_ref().unchecked_ref());
+            closure.forget();
+        }
+
         // Start at main menu (HUD hidden, main-menu visible by default in HTML)
 
         // Start game loop
