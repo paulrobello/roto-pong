@@ -7,6 +7,8 @@
 
 A **circular arena arcade game** (Pong/Breakout-inspired) built with Rust, WebAssembly, and WebGPU. Defend the black hole with your orbiting paddle!
 
+![Roto Pong Screenshot](https://raw.githubusercontent.com/paulrobello/roto-pong/main/screenshot.png)
+
 [!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/probello3)
 
 ## 🎮 Play Now
