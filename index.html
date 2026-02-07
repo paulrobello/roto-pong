@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="description" content="Roto Pong - A circular arena arcade game">
     <title>Roto Pong</title>
-    <link data-trunk rel="rust" data-bin="roto-pong" data-wasm-opt="z" data-wasm-opt-params="--enable-bulk-memory --enable-nontrapping-float-to-int" />
+    <!-- data-wasm-opt="0" to avoid wasm-opt validation errors with modern WASM features -->
+    <link data-trunk rel="rust" data-bin="roto-pong" data-wasm-opt="0" />
     <style>
         * {
             margin: 0;
