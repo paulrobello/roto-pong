@@ -796,6 +796,19 @@ mod wasm_game {
                         g.input.idle_mode = !g.input.idle_mode;
                         log::info!("Idle mode: {}", g.input.idle_mode);
                     }
+                    "m" | "M" => {
+                        // Toggle mute
+                        let muted = g.settings.master_volume > 0.0;
+                        if muted {
+                            g.audio.set_master_volume(0.0);
+                            g.settings.master_volume = 0.0;
+                            log::info!("Sound: OFF");
+                        } else {
+                            g.audio.set_master_volume(0.8);
+                            g.settings.master_volume = 0.8;
+                            log::info!("Sound: ON");
+                        }
+                    }
                     _ => {}
                 }
             });
