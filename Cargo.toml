@@ -60,6 +60,16 @@ web-sys = { version = "0.3", features = [
     "Touch",
     "DomRect",
     "PointerEvent",
+    "HtmlInputElement",
+    # Audio
+    "AudioContext",
+    "AudioContextState",
+    "AudioDestinationNode",
+    "AudioNode",
+    "AudioParam",
+    "GainNode",
+    "OscillatorNode",
+    "OscillatorType",
 ] }
 js-sys = "0.3"
 console_log = "1"

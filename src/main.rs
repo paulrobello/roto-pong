@@ -10,7 +10,8 @@ mod wasm_game {
     use std::cell::RefCell;
     use std::rc::Rc;
     use wasm_bindgen::prelude::*;
-    use web_sys::{HtmlCanvasElement, MouseEvent, TouchEvent};
+    use wasm_bindgen::JsCast;
+    use web_sys::{HtmlCanvasElement, HtmlInputElement, MouseEvent, TouchEvent};
 
     use roto_pong::consts::*;
     use roto_pong::highscores::{format_date, HighScores};
@@ -46,10 +47,18 @@ mod wasm_game {
             console.log('Current pointerLockElement:', el);
             return el !== null;
         }
+        
+        export function exit_pointer_lock() {
+            if (document.pointerLockElement) {
+                document.exitPointerLock();
+                console.log('Exited pointer lock');
+            }
+        }
     ")]
     extern "C" {
         fn request_pointer_lock();
         fn check_pointer_lock() -> bool;
+        fn exit_pointer_lock();
     }
 
     /// Game instance holding all state
@@ -72,15 +81,20 @@ mod wasm_game {
         pointer_locked: bool,
         // Track if score was submitted this game over
         score_submitted: bool,
+        // Audio
+        audio: roto_pong::audio::AudioManager,
     }
 
     impl Game {
         fn new(seed: u64) -> Self {
             use roto_pong::sim::GamePhase;
+            let settings = Settings::load();
+            let mut audio = roto_pong::audio::AudioManager::new();
+            audio.set_master_volume(settings.master_volume);
+            audio.set_sfx_volume(settings.sfx_volume);
             Self {
                 state: GameState::new(seed),
                 render_state: None,
-                settings: Settings::load(),
                 highscores: HighScores::load(),
                 accumulator: 0.0,
                 last_time: 0.0,
@@ -92,6 +106,8 @@ mod wasm_game {
                 last_phase: GamePhase::Serve,
                 pointer_locked: false,
                 score_submitted: false,
+                settings,
+                audio,
             }
         }
 
@@ -124,6 +140,9 @@ mod wasm_game {
                 self.input.skip_wave = false;
             }
 
+            // Play audio for game events
+            self.play_audio_events();
+
             // Track frame times for FPS
             self.frame_times[self.frame_index] = time;
             self.frame_index = (self.frame_index + 1) % 60;
@@ -146,12 +165,50 @@ mod wasm_game {
                 if current_phase == GamePhase::Breather || current_phase == GamePhase::Paused {
                     self.save_game();
                 }
+                // Release pointer lock when paused so menu can be used
+                if current_phase == GamePhase::Paused {
+                    exit_pointer_lock();
+                }
                 // Submit score when entering GameOver
                 if current_phase == GamePhase::GameOver {
                     let rank = self.submit_score();
                     self.show_game_over_highscore(rank);
+                    // Release pointer lock so menu can be used
+                    exit_pointer_lock();
                 }
                 self.last_phase = current_phase;
+            }
+        }
+
+        /// Play audio for game events
+        fn play_audio_events(&mut self) {
+            use roto_pong::audio::SoundEffect;
+            use roto_pong::sim::{BlockKind, GameEvent};
+
+            for event in &self.state.events {
+                let sfx = match event {
+                    GameEvent::PaddleHit => SoundEffect::PaddleHit,
+                    GameEvent::WallHit => SoundEffect::WallHit,
+                    GameEvent::BlockHit => SoundEffect::BlockHit,
+                    GameEvent::BlockBreak(kind) => match kind {
+                        BlockKind::Glass => SoundEffect::BlockBreakGlass,
+                        BlockKind::Armored => SoundEffect::BlockBreakArmored,
+                        BlockKind::Explosive => SoundEffect::BlockBreakExplosive,
+                        BlockKind::Jello => SoundEffect::BlockBreakJello,
+                        BlockKind::Crystal => SoundEffect::BlockBreakCrystal,
+                        BlockKind::Electric => SoundEffect::BlockBreakElectric,
+                        BlockKind::Portal { .. } => SoundEffect::BlockBreakPortal,
+                        BlockKind::Invincible => continue, // Shouldn't happen
+                        BlockKind::Magnet => SoundEffect::BlockBreakArmored, // Metallic
+                        BlockKind::Ghost => SoundEffect::BlockBreakGlass, // Ethereal shatter
+                    },
+                    GameEvent::PickupCollect => SoundEffect::PickupCollect,
+                    GameEvent::BallLost => SoundEffect::BlackHoleConsume,
+                    GameEvent::WaveClear => SoundEffect::WaveClear,
+                    GameEvent::Launch => SoundEffect::Launch,
+                    GameEvent::GameOver => SoundEffect::GameOver,
+                };
+                self.audio.play(sfx);
             }
         }
 
@@ -662,6 +719,8 @@ mod wasm_game {
             let closure = Closure::<dyn FnMut(_)>::new(move |_event: MouseEvent| {
                 let mut g = game.borrow_mut();
                 g.input.launch = true;
+                // Resume audio context on user gesture
+                g.audio.resume();
 
                 // Request pointer lock if not already locked
                 if !g.pointer_locked {
@@ -705,6 +764,8 @@ mod wasm_game {
                 event.prevent_default();
                 let mut g = game.borrow_mut();
                 g.input.launch = true;
+                // Resume audio context on user gesture
+                g.audio.resume();
                 if let Some(touch) = event.touches().get(0) {
                     let w = canvas_clone.client_width() as f32;
                     let h = canvas_clone.client_height() as f32;
@@ -871,6 +932,7 @@ mod wasm_game {
             ("show_fps", settings.show_fps),
             ("reduced_motion", settings.reduced_motion),
             ("high_contrast", settings.high_contrast),
+            ("mute_on_blur", settings.mute_on_blur),
         ];
         for (name, value) in toggles {
             if let Ok(Some(toggle)) = document.query_selector(&format!(".toggle[data-setting='{}']", name)) {
@@ -880,6 +942,22 @@ mod wasm_game {
                     let _ = toggle.set_attribute("class", "toggle");
                 }
             }
+        }
+
+        // Volume sliders
+        if let Some(slider) = document.get_element_by_id("master-volume") {
+            let input: web_sys::HtmlInputElement = slider.dyn_into().unwrap();
+            input.set_value(&format!("{}", (settings.master_volume * 100.0) as u32));
+        }
+        if let Some(el) = document.get_element_by_id("master-volume-value") {
+            el.set_text_content(Some(&format!("{}%", (settings.master_volume * 100.0) as u32)));
+        }
+        if let Some(slider) = document.get_element_by_id("sfx-volume") {
+            let input: web_sys::HtmlInputElement = slider.dyn_into().unwrap();
+            input.set_value(&format!("{}", (settings.sfx_volume * 100.0) as u32));
+        }
+        if let Some(el) = document.get_element_by_id("sfx-volume-value") {
+            el.set_text_content(Some(&format!("{}%", (settings.sfx_volume * 100.0) as u32)));
         }
     }
 
@@ -940,6 +1018,7 @@ mod wasm_game {
                                 if let Some(preset) = roto_pong::settings::QualityPreset::from_str(&quality_str) {
                                     let mut g = game.borrow_mut();
                                     g.settings.apply_preset(preset);
+                                    g.settings.save();
                                     drop(g);
                                     sync_settings_ui(&game.borrow().settings);
                                     log::info!("Quality set to: {:?}", preset);
@@ -984,8 +1063,10 @@ mod wasm_game {
                                     "show_fps" => g.settings.show_fps = new_value,
                                     "reduced_motion" => g.settings.reduced_motion = new_value,
                                     "high_contrast" => g.settings.high_contrast = new_value,
+                                    "mute_on_blur" => g.settings.mute_on_blur = new_value,
                                     _ => {}
                                 }
+                                g.settings.save();
 
                                 // Update toggle visual
                                 if new_value {
@@ -1001,6 +1082,47 @@ mod wasm_game {
                     let _ = toggle.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
                     closure.forget();
                 }
+            }
+        }
+
+        // Volume sliders
+        for (slider_id, value_id, setting_name) in [
+            ("master-volume", "master-volume-value", "master_volume"),
+            ("sfx-volume", "sfx-volume-value", "sfx_volume"),
+        ] {
+            if let Some(slider) = document.get_element_by_id(slider_id) {
+                let game = game.clone();
+                let value_id = value_id.to_string();
+                let setting_name = setting_name.to_string();
+                let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::Event| {
+                    if let Some(target) = event.target() {
+                        let input: web_sys::HtmlInputElement = target.dyn_into().unwrap();
+                        let value: f32 = input.value().parse().unwrap_or(80.0);
+                        let normalized = value / 100.0;
+                        
+                        let mut g = game.borrow_mut();
+                        match setting_name.as_str() {
+                            "master_volume" => {
+                                g.settings.master_volume = normalized;
+                                g.audio.set_master_volume(normalized);
+                            }
+                            "sfx_volume" => {
+                                g.settings.sfx_volume = normalized;
+                                g.audio.set_sfx_volume(normalized);
+                            }
+                            _ => {}
+                        }
+                        g.settings.save();
+                        
+                        // Update value display
+                        let document = web_sys::window().unwrap().document().unwrap();
+                        if let Some(el) = document.get_element_by_id(&value_id) {
+                            el.set_text_content(Some(&format!("{}%", value as u32)));
+                        }
+                    }
+                });
+                let _ = slider.add_event_listener_with_callback("input", closure.as_ref().unchecked_ref());
+                closure.forget();
             }
         }
     }
@@ -1171,13 +1293,20 @@ mod wasm_game {
             let game = game.clone();
             let document_clone = document.clone();
             let closure = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::Event| {
+                let mut g = game.borrow_mut();
                 if document_clone.visibility_state() == web_sys::VisibilityState::Hidden {
-                    let mut g = game.borrow_mut();
                     // Auto-pause if playing
                     if g.state.phase == GamePhase::Playing || g.state.phase == GamePhase::Serve {
                         g.input.pause = true;
                         log::info!("Auto-paused (tab hidden)");
                     }
+                    // Mute audio if setting enabled
+                    if g.settings.mute_on_blur {
+                        g.audio.set_muted(true);
+                    }
+                } else {
+                    // Unmute when visible again
+                    g.audio.set_muted(false);
                 }
             });
             let _ = document.add_event_listener_with_callback(
@@ -1189,15 +1318,33 @@ mod wasm_game {
 
         // Window blur (click outside)
         {
+            let game = game.clone();
             let closure = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::FocusEvent| {
                 let mut g = game.borrow_mut();
                 if g.state.phase == GamePhase::Playing || g.state.phase == GamePhase::Serve {
                     g.input.pause = true;
                     log::info!("Auto-paused (window blur)");
                 }
+                // Mute audio if setting enabled
+                if g.settings.mute_on_blur {
+                    g.audio.set_muted(true);
+                }
             });
             let _ =
                 window.add_event_listener_with_callback("blur", closure.as_ref().unchecked_ref());
+            closure.forget();
+        }
+
+        // Window focus (restored)
+        {
+            let game = game.clone();
+            let closure = Closure::<dyn FnMut(_)>::new(move |_event: web_sys::FocusEvent| {
+                let mut g = game.borrow_mut();
+                // Unmute audio
+                g.audio.set_muted(false);
+            });
+            let _ =
+                window.add_event_listener_with_callback("focus", closure.as_ref().unchecked_ref());
             closure.forget();
         }
     }

@@ -16,6 +16,9 @@ pub mod sim;
 pub mod tuning;
 pub mod ui;
 
+#[cfg(target_arch = "wasm32")]
+pub mod audio;
+
 pub use highscores::HighScores;
 pub use settings::{QualityPreset, Settings};
 

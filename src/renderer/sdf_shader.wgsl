@@ -74,8 +74,8 @@ struct Particle {
     size: f32,
     life: f32,
     color_u: u32,
-    _p1: u32,
-    _p2: u32,
+    vel_x: f32,
+    vel_y: f32,
     _p3: u32,
 }
 
@@ -986,7 +986,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let part = particles[i];
         if (part.life <= 0.0 || part.size <= 0.0) { continue; }
         
-        let d = length(p - part.pos) - part.size;
+        let vel = vec2<f32>(part.vel_x, part.vel_y);
+        let speed = length(vel);
         
         // Color based on block type - BRIGHT and saturated
         var part_color = vec3<f32>(0.5, 0.8, 1.0); // Glass - bright cyan
@@ -995,34 +996,45 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         else if (part.color_u == 3u) { part_color = vec3<f32>(1.0, 0.95, 0.4); } // Invincible - gold
         else if (part.color_u == 4u) { part_color = vec3<f32>(0.3, 1.0, 0.9); } // Portal - teal
         else if (part.color_u == 5u) { part_color = vec3<f32>(0.5, 1.0, 0.4); } // Jello - lime
+        else if (part.color_u == 6u) { // Crystal - rainbow sparkle!
+            let hue = fract(f32(i) * 0.1 + globals.time * 0.5);
+            let h6 = hue * 6.0;
+            if (h6 < 1.0) { part_color = vec3<f32>(1.0, h6, 0.0); }
+            else if (h6 < 2.0) { part_color = vec3<f32>(2.0 - h6, 1.0, 0.0); }
+            else if (h6 < 3.0) { part_color = vec3<f32>(0.0, 1.0, h6 - 2.0); }
+            else if (h6 < 4.0) { part_color = vec3<f32>(0.0, 4.0 - h6, 1.0); }
+            else if (h6 < 5.0) { part_color = vec3<f32>(h6 - 4.0, 0.0, 1.0); }
+            else { part_color = vec3<f32>(1.0, 0.0, 6.0 - h6); }
+        }
+        else if (part.color_u == 7u) { part_color = vec3<f32>(1.0, 0.9, 0.3); } // Electric - yellow
+        else if (part.color_u == 8u) { part_color = vec3<f32>(0.9, 0.3, 0.5); } // Magnet - red-pink
+        else if (part.color_u == 9u) { part_color = vec3<f32>(0.7, 0.7, 0.8); } // Ghost - pale
         // 🔥 Special effect particles
         else if (part.color_u == 99u) { part_color = vec3<f32>(0.7, 0.95, 1.0); } // Paddle sparks - white/cyan
         else if (part.color_u == 100u) { part_color = vec3<f32>(1.0, 0.85, 0.2); } // Wave clear - gold
         else if (part.color_u == 101u) { part_color = vec3<f32>(1.0, 1.0, 0.95); } // Wave clear - white
         
-        // Different rendering for paddle sparks (sharper) vs regular particles (glowy)
+        // Simple circular particles - no stretching
+        let to_part = p - part.pos;
+        let d = length(to_part) - part.size;
+        
+        // Sparkle/twinkle effect
+        let sparkle_phase = f32(i) * 7.3 + globals.time * 8.0;
+        let sparkle = 0.7 + 0.3 * sin(sparkle_phase);
+        
+        // Different rendering for paddle sparks vs regular particles
         if (part.color_u == 99u) {
-            // 🔥 SHARP paddle sparks - minimal glow, hard edges
+            // 🔥 SHARP paddle sparks
             let spark_core = 1.0 - smoothstep(-aa * 0.5, aa * 0.5, d);
-            color += part_color * spark_core * part.life * 1.5;
-            // Tiny bright center
-            let center_d = d + part.size * 0.3;
-            let center_mask = 1.0 - smoothstep(-aa * 0.3, aa * 0.3, center_d);
-            color = mix(color, vec3<f32>(1.0, 1.0, 1.0), center_mask * part.life);
+            color += part_color * spark_core * part.life * 1.5 * sparkle;
         } else {
-            // Regular particles - glowy
-            let outer_glow = exp(-max(d, 0.0) * 0.15) * part.life * 0.8;
-            color += part_color * outer_glow;
+            // Disintegration particles - small bright dots
+            let glow = exp(-max(d, 0.0) * 0.5) * part.life * sparkle;
+            color += part_color * glow * 0.8;
             
-            // Inner glow (tighter)
-            let inner_glow = exp(-max(d, 0.0) * 0.4) * part.life * 0.4;
-            color += vec3<f32>(1.0, 1.0, 1.0) * inner_glow;
-            
-            // Hot white core
-            let core_d = d + part.size * 0.5;
-            let core_mask = 1.0 - smoothstep(-aa, aa, core_d);
-            let core_color = mix(part_color, vec3<f32>(1.0, 1.0, 1.0), 0.7);
-            color = mix(color, core_color * (1.0 + part.life * 0.5), core_mask * part.life);
+            // Bright core
+            let core_mask = 1.0 - smoothstep(-aa, aa, d);
+            color = mix(color, part_color * 1.5, core_mask * part.life * sparkle);
         }
     }
     

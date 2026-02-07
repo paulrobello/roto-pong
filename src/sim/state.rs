@@ -26,6 +26,29 @@ pub enum GamePhase {
     GameOver,
 }
 
+/// Game events for audio/visual feedback (not serialized)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GameEvent {
+    /// Ball hit paddle
+    PaddleHit,
+    /// Ball hit wall
+    WallHit,
+    /// Ball hit block (didn't break)
+    BlockHit,
+    /// Block destroyed
+    BlockBreak(BlockKind),
+    /// Pickup collected
+    PickupCollect,
+    /// Ball lost to black hole
+    BallLost,
+    /// Wave cleared
+    WaveClear,
+    /// Ball launched
+    Launch,
+    /// Game over
+    GameOver,
+}
+
 /// Ball state - attached to paddle or free-moving
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum BallState {
@@ -414,6 +437,9 @@ pub struct GameState {
     /// Wave clear flash (0.0-1.0, bright flash that fades)
     #[serde(skip)]
     pub wave_flash: f32,
+    /// Game events this tick (for audio/visual feedback)
+    #[serde(skip)]
+    pub events: Vec<GameEvent>,
     /// Next entity ID
     next_id: u32,
 }
@@ -444,6 +470,7 @@ impl GameState {
             particles: Vec::new(),
             screen_shake: 0.0,
             wave_flash: 0.0,
+            events: Vec::new(),
             next_id: 1,
         };
 

@@ -54,6 +54,9 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
         _ => {}
     }
 
+    // Clear events from previous tick
+    state.events.clear();
+
     // Decay screen shake
     state.screen_shake *= 0.9; // Fast decay
     if state.screen_shake < 0.01 {
@@ -197,6 +200,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                     }
                 }
                 state.phase = GamePhase::Playing;
+                state.events.push(super::state::GameEvent::Launch);
             }
         }
 
@@ -345,7 +349,43 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                     }
                 }
             }
-            // Remove destroyed portal blocks
+            // Spawn particles for destroyed portal blocks, then remove them
+            for block in state.blocks.iter() {
+                if block.hp == 0 {
+                    let mid_angle = (block.arc.theta_start + block.arc.theta_end) / 2.0;
+                    let arc_span = block.arc.theta_end - block.arc.theta_start;
+                    let particle_count = ((20.0 + arc_span * 30.0).min(40.0)) as usize;
+                    let particle_seed = state.time_ticks as u32 + block.id;
+                    
+                    for i in 0..particle_count {
+                        if state.particles.len() >= super::state::MAX_PARTICLES {
+                            state.particles.remove(0);
+                        }
+                        let hash = particle_seed.wrapping_mul(2654435761).wrapping_add(i as u32 * 7919);
+                        let angle_offset = ((hash % 1000) as f32 / 1000.0 - 0.5) * arc_span * 1.2;
+                        let radius_offset = ((hash / 1000 % 1000) as f32 / 1000.0 - 0.5) * block.arc.thickness;
+                        let spawn_angle = mid_angle + angle_offset;
+                        let spawn_radius = block.arc.radius + radius_offset;
+                        let pos = Vec2::new(spawn_angle.cos() * spawn_radius, spawn_angle.sin() * spawn_radius);
+                        
+                        let vel_hash = hash.wrapping_mul(1664525).wrapping_add(1013904223);
+                        let vel_angle = (vel_hash % 10000) as f32 / 10000.0 * std::f32::consts::TAU;
+                        let speed_hash = vel_hash.wrapping_mul(22695477).wrapping_add(1);
+                        let base_speed = 80.0 + (speed_hash % 200) as f32;
+                        let vel = Vec2::new(vel_angle.cos(), vel_angle.sin()) * base_speed;
+                        let size_hash = speed_hash.wrapping_mul(69069).wrapping_add(1);
+                        let size = 1.5 + (size_hash % 250) as f32 / 100.0;
+                        
+                        state.particles.push(super::state::Particle {
+                            pos,
+                            vel,
+                            color: 4, // Portal teal
+                            life: 0.36,
+                            size,
+                        });
+                    }
+                }
+            }
             state.blocks.retain(|b| b.hp > 0);
 
             // Collision detection and response
@@ -507,6 +547,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
 
                             // Set cooldown to prevent immediate re-collision
                             ball.paddle_cooldown = 8;
+                            state.events.push(super::state::GameEvent::PaddleHit);
                             
                             // 🔥 Paddle hit sparks - emit from contact point, spread around normal
                             let spark_count = 8;
@@ -577,6 +618,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                             );
 
                             ball.paddle_cooldown = 8;
+                            state.events.push(super::state::GameEvent::PaddleHit);
                             
                             // 🔥 Paddle hit sparks - emit from contact, spread around normal
                             let spark_count = 8;
@@ -644,6 +686,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                         ball.vel = reflect_velocity(ball.vel, normal);
                         let penetration = wall_dist + ball.radius;
                         ball.pos += normal * (penetration + 1.0);
+                        state.events.push(super::state::GameEvent::WallHit);
                     }
 
                     // --- SDF Block Collisions ---
@@ -778,10 +821,12 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                 for idx in blocks_to_damage.into_iter().rev() {
                     // Trigger wobble on jello blocks
                     state.blocks[idx].trigger_wobble();
+                    let block_kind = state.blocks[idx].kind;
 
                     state.blocks[idx].hp = state.blocks[idx].hp.saturating_sub(1);
                     if state.blocks[idx].hp == 0 {
                         let block = state.blocks.remove(idx);
+                        state.events.push(super::state::GameEvent::BlockBreak(block_kind));
 
                         // SPAWN PARTICLES! 🎆
                         let mid_angle = (block.arc.theta_start + block.arc.theta_end) / 2.0;
@@ -807,18 +852,22 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                         };
 
                         // Spawn 20-40 particles - MAKE IT RAIN!
-                        let particle_count = ((20.0 + arc_span * 30.0).min(40.0) as usize) + particle_bonus;
-                        let particle_seed = state.time_ticks as u32;
+                        // Disintegration burst - lots of tiny particles in all directions
+                        // Minimum 25 particles to ensure visibility
+                        let particle_count = ((30.0 + arc_span * 40.0).min(60.0) as usize).max(25) + particle_bonus;
+                        // Include block ID in seed so each block gets unique particles
+                        let particle_seed = state.time_ticks as u32 ^ block.id.wrapping_mul(2654435761);
 
                         for i in 0..particle_count {
                             if state.particles.len() >= super::state::MAX_PARTICLES {
-                                // Remove oldest particles to make room
                                 state.particles.remove(0);
                             }
                             // Deterministic "random" spread using hash
                             let hash = particle_seed
                                 .wrapping_mul(2654435761)
                                 .wrapping_add(i as u32 * 7919);
+                            
+                            // Spawn along the block arc
                             let angle_offset =
                                 ((hash % 1000) as f32 / 1000.0 - 0.5) * arc_span * 1.2;
                             let radius_offset =
@@ -831,24 +880,23 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                                 spawn_angle.sin() * spawn_radius,
                             );
 
-                            // Velocity: EXPLODE outward with variety
-                            let base_speed = 120.0 + ((hash / 1000000 % 150) as f32);
-                            let vel_angle =
-                                spawn_angle + ((hash / 100000 % 1000) as f32 / 1000.0 - 0.5) * 2.0;
-                            // Mix of outward and tangential motion
-                            let outward = Vec2::new(vel_angle.cos(), vel_angle.sin());
-                            let tangent = Vec2::new(-vel_angle.sin(), vel_angle.cos());
-                            let tang_factor =
-                                ((hash / 10000000 % 1000) as f32 / 1000.0 - 0.5) * 0.5;
-                            let vel = (outward + tangent * tang_factor).normalize() * base_speed;
+                            // Velocity: BURST in ALL directions (full 360°)
+                            // Re-hash for velocity to get independent random values
+                            let vel_hash = hash.wrapping_mul(1664525).wrapping_add(1013904223);
+                            let vel_angle = (vel_hash % 10000) as f32 / 10000.0 * std::f32::consts::TAU;
+                            let speed_hash = vel_hash.wrapping_mul(22695477).wrapping_add(1);
+                            let base_speed = 80.0 + (speed_hash % 200) as f32;
+                            let vel = Vec2::new(vel_angle.cos(), vel_angle.sin()) * base_speed;
 
-                            let size = 4.0 + ((hash / 10000 % 100) as f32 / 100.0) * 6.0;
+                            // Small particles - use rehashed value for size variety
+                            let size_hash = speed_hash.wrapping_mul(69069).wrapping_add(1);
+                            let size = 1.5 + (size_hash % 250) as f32 / 100.0;
 
                             state.particles.push(super::state::Particle {
                                 pos,
                                 vel,
                                 color,
-                                life: 1.0,
+                                life: 0.36, // Short duration - quick disintegration
                                 size,
                             });
                         }
@@ -1004,7 +1052,8 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                                     super::state::BlockKind::Magnet => 8,
                                     super::state::BlockKind::Ghost => 9,
                                 };
-                                let particle_count = ((15.0 + arc_span * 20.0).min(30.0) as usize);
+                                // Disintegration burst for explosion victims
+                                let particle_count = ((25.0 + arc_span * 30.0).min(45.0) as usize);
                                 let particle_seed = state.time_ticks as u32 + block.id;
 
                                 for i in 0..particle_count {
@@ -1024,17 +1073,20 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                                         spawn_angle.cos() * spawn_radius,
                                         spawn_angle.sin() * spawn_radius,
                                     );
-                                    let base_speed = 100.0 + ((hash / 1000000 % 120) as f32);
-                                    let vel_angle =
-                                        spawn_angle + ((hash / 100000 % 1000) as f32 / 1000.0 - 0.5) * 2.0;
+                                    // Burst in all directions - re-hash for independent random values
+                                    let vel_hash = hash.wrapping_mul(1664525).wrapping_add(1013904223);
+                                    let vel_angle = (vel_hash % 10000) as f32 / 10000.0 * std::f32::consts::TAU;
+                                    let speed_hash = vel_hash.wrapping_mul(22695477).wrapping_add(1);
+                                    let base_speed = 70.0 + (speed_hash % 180) as f32;
                                     let vel = Vec2::new(vel_angle.cos(), vel_angle.sin()) * base_speed;
-                                    let size = 3.0 + ((hash / 10000 % 100) as f32 / 100.0) * 5.0;
+                                    let size_hash = speed_hash.wrapping_mul(69069).wrapping_add(1);
+                                    let size = 1.5 + (size_hash % 200) as f32 / 100.0;
 
                                     state.particles.push(super::state::Particle {
                                         pos,
                                         vel,
                                         color,
-                                        life: 1.0,
+                                        life: 0.32, // Quick disintegration
                                         size,
                                     });
                                 }
@@ -1068,6 +1120,9 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                             1.0
                         };
                         state.score += (base_score as f32 * multiplier) as u64;
+                    } else {
+                        // Block hit but not destroyed
+                        state.events.push(super::state::GameEvent::BlockHit);
                     }
                 }
 
@@ -1213,6 +1268,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
 
                 if in_arc && in_radius {
                     collected_effects.push(pickup.kind);
+                    state.events.push(super::state::GameEvent::PickupCollect);
                     false // Remove collected pickup
                 } else if pickup_dist < BLACK_HOLE_RADIUS {
                     false // Remove when sucked into black hole
@@ -1406,9 +1462,11 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
 
             // Check if all balls lost (none alive or dying)
             if state.balls.is_empty() {
+                state.events.push(super::state::GameEvent::BallLost);
                 state.lives = state.lives.saturating_sub(1);
                 if state.lives == 0 {
                     state.phase = GamePhase::GameOver;
+                    state.events.push(super::state::GameEvent::GameOver);
                 } else {
                     // Respawn after delay (handled by respawn timer, simplified here)
                     state.spawn_ball_attached();
@@ -1463,6 +1521,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                 // Big screen shake and flash!
                 state.screen_shake = 1.0;
                 state.wave_flash = 1.0;
+                state.events.push(super::state::GameEvent::WaveClear);
                 
                 // Remove invincible blocks too when wave clears
                 state.blocks.clear();

@@ -95,8 +95,8 @@ struct ParticleData {
     size: f32,
     life: f32,
     color: u32,
-    _pad1: u32,
-    _pad2: u32,
+    vel_x: f32,  // For motion blur/stretching
+    vel_y: f32,
     _pad3: u32,
 }
 
@@ -686,8 +686,8 @@ impl SdfRenderState {
                 size: 0.0,
                 life: 0.0,
                 color: 0,
-                _pad1: 0,
-                _pad2: 0,
+                vel_x: 0.0,
+                vel_y: 0.0,
                 _pad3: 0,
             };
             MAX_PARTICLES
@@ -698,8 +698,8 @@ impl SdfRenderState {
                 size: particle.size,
                 life: particle.life,
                 color: particle.color,
-                _pad1: 0,
-                _pad2: 0,
+                vel_x: particle.vel.x,
+                vel_y: particle.vel.y,
                 _pad3: 0,
             };
         }
