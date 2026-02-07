@@ -59,7 +59,7 @@ jobs:
   deploy:
     name: Deploy to GitHub Pages
     needs: build-wasm
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       pages: write
