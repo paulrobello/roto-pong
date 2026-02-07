@@ -1037,7 +1037,7 @@ mod wasm_game {
                                 let el: web_sys::Element = target.dyn_into().unwrap();
                                 if let Some(quality_str) = el.get_attribute("data-quality") {
                                     if let Some(preset) =
-                                        roto_pong::settings::QualityPreset::from_str(&quality_str)
+                                        roto_pong::settings::QualityPreset::parse(&quality_str)
                                     {
                                         let mut g = game.borrow_mut();
                                         g.settings.apply_preset(preset);

@@ -25,7 +25,8 @@ pub struct HighScores {
 }
 
 impl HighScores {
-    /// LocalStorage key
+    /// LocalStorage key (used only in wasm32)
+    #[allow(dead_code)]
     const STORAGE_KEY: &'static str = "roto_pong_highscores";
 
     /// Create empty leaderboard

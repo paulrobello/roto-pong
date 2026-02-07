@@ -22,7 +22,8 @@ impl QualityPreset {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    /// Parse a quality preset from a string
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "low" => Some(QualityPreset::Low),
             "medium" | "med" => Some(QualityPreset::Medium),
@@ -138,9 +139,10 @@ impl Default for Settings {
 impl Settings {
     /// Create settings from a quality preset (applies preset defaults)
     pub fn from_preset(preset: QualityPreset) -> Self {
-        let mut settings = Self::default();
-        settings.quality = preset;
-        settings
+        Self {
+            quality: preset,
+            ..Default::default()
+        }
     }
 
     /// Apply a quality preset (updates quality-dependent settings)
@@ -173,7 +175,8 @@ impl Settings {
         }
     }
 
-    /// LocalStorage key
+    /// LocalStorage key (used only in wasm32)
+    #[allow(dead_code)]
     const STORAGE_KEY: &'static str = "roto_pong_settings";
 
     /// Load settings from LocalStorage (WASM only)

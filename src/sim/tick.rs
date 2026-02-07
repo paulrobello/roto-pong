@@ -717,10 +717,11 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                         block_arcs.iter().enumerate()
                     {
                         // Ghost blocks: check if visible enough to be hittable
-                        if kind == super::state::BlockKind::Ghost {
-                            if idx < state.blocks.len() && !state.blocks[idx].is_hittable() {
-                                continue; // Ball passes through invisible ghosts
-                            }
+                        if kind == super::state::BlockKind::Ghost
+                            && idx < state.blocks.len()
+                            && !state.blocks[idx].is_hittable()
+                        {
+                            continue; // Ball passes through invisible ghosts
                         }
 
                         let block_dist =
@@ -1081,7 +1082,7 @@ pub fn tick(state: &mut GameState, input: &TickInput, dt: f32) {
                                     super::state::BlockKind::Ghost => 9,
                                 };
                                 // Disintegration burst for explosion victims
-                                let particle_count = ((25.0 + arc_span * 30.0).min(45.0) as usize);
+                                let particle_count = (25.0 + arc_span * 30.0).min(45.0) as usize;
                                 let particle_seed = state.time_ticks as u32 + block.id;
 
                                 for i in 0..particle_count {
@@ -1681,7 +1682,7 @@ pub fn generate_wave(state: &mut GameState) {
     );
 
     // Special wave: Jello Madness! Every 10th wave starting at wave 10
-    let jello_madness = wave >= 10 && wave % 10 == 0;
+    let jello_madness = wave >= 10 && wave.is_multiple_of(10);
     if jello_madness {
         log::info!("🟢 JELLO MADNESS WAVE!");
     }
@@ -1919,7 +1920,7 @@ fn determine_block_kind(
     }
 
     // Magnet blocks (wave 6+, ~5% chance, middle layers)
-    if wave >= 6 && layer >= 1 && layer <= 2 && !magnet_capped && (42..47).contains(&roll) {
+    if wave >= 6 && (1..=2).contains(&layer) && !magnet_capped && (42..47).contains(&roll) {
         return BlockKind::Magnet;
     }
 

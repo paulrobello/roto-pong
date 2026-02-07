@@ -3,6 +3,10 @@ target = "index.html"
 dist = "dist"
 release = false
 
+# Skip wasm-opt which doesn't support bulk-memory ops in CI
+[build.wasm_opt]
+enabled = false
+
 [watch]
 ignore = ["dist", "target"]
 
