@@ -1,71 +1,82 @@
-# Roto Pong - Future Ideas
+# Roto Pong - Ideas & Roadmap
 
-## Block Effects
+## ✅ Implemented
 
-### ✨ Shimmer Effect (Priority: A)
-- Occasional animated shine/sparkle on blocks
-- Could be random or wave-based across the arena
-- Different shimmer styles per block type
+### Block Types
+- ✅ **Glass Block** - Basic, 1 HP
+- ✅ **Armored Block** - 2+ HP, metallic look
+- ✅ **Explosive Block** - Damages neighbors on destroy
+- ✅ **Jello Block** - Wobbles on hit, 2 HP
+- ✅ **Portal Block** - Ball slides through, exits at random point
+- ✅ **Crystal Block** - Rainbow prismatic shader, extra sparkles
+- ✅ **Electric Block** - Lightning arcs between nearby electrics, speed boost
+- ✅ **Magnet Block** - Red pole attracts, silver repels
+- ✅ **Ghost Block** - Fades in/out, only hittable when visible
+- ✅ **Invincible Block** - Can't be destroyed
 
-### 🟢 Jello Block (Priority: High)
-- NURBS-style surface distortion
-- Ball deforms the surface where it hits
-- Ripple effect propagates across the block
-- When adjacent jello blocks lose a neighbor (block destroyed), remaining ones wiggle
-- Physics-based wobble simulation in shader
+### Power-ups
+- ✅ **MultiBall** - Spawns 2 extra balls
+- ✅ **Slow Motion** - Slows ball speed
+- ✅ **Piercing** - Ball passes through blocks
+- ✅ **Widen Paddle** - Increases paddle arc (stacks!)
+- ✅ **Shield** - Protects black hole once
 
-### 🌀 Portal/Tunnel Block (Priority: Medium)
-- Ball enters and tunnels through, exits other side
-- Index of refraction effect - ball path bends
-- Limited uses (1-3 passes before block breaks or becomes solid)
-- **Metaball effect**: Block "reaches" toward approaching ball
-- Cool entry/exit animations
+### Audio
+- ✅ **Procedural Sound Effects** - 16 unique sounds via Web Audio API
+- ✅ **Volume Controls** - Master + SFX sliders
+- ✅ **Mute Toggle** - M key, mute on blur option
 
-### 👻 Translucent Blocks (Priority: Medium)
-- See-through blocks with depth/glass effect
-- Ball visible behind them
-- Could combine with other block types
-- Frosted glass vs clear glass variants
+### Visuals
+- ✅ **M87-style Black Hole** - Uniform orange glow, bright edge
+- ✅ **Particle System** - Block breaks, celebrations, paddle sparks
+- ✅ **Electric Arcs** - Edge-to-edge jagged lightning
+- ✅ **Screen Shake & Wave Flash**
+- ✅ **Ball Trail** - Velocity-colored
 
-### 💎 Crystal Block (Idea)
-- Refracts ball visually (ball appears offset inside)
-- Shatters into particles when destroyed
-- Prismatic rainbow edge effects
-
-### ⚡ Electric Block (Idea)
-- Arcs of electricity between nearby electric blocks
-- Ball gets speed boost passing through
-- Animated lightning effect
-
-## Environment
-
-### 🎨 Animated Backdrops
-- Parallax starfields
-- Nebula clouds (procedural noise)
-- Wormhole/vortex effects
-- Reactive to gameplay (pulse on hits, etc.)
-- Multiple theme options
-
-### 🌊 Arena Effects
-- Heat distortion near explosive blocks
-- Gravity lensing near black hole (already have basic version)
-- Particle systems for:
-  - Block destruction
-  - Ball trail sparkles
-  - Black hole consumption
-
-## Audio Ideas (Future)
-- Paddle hit sound
-- Block break sounds (different per type)
-- Black hole ambient hum
-- Music that reacts to gameplay intensity
-
-## Gameplay Ideas
-- Power-ups that drop from blocks
-- Multi-ball power-up
-- Paddle size changes
-- Slow-mo power-up
-- Shield that protects black hole temporarily
+### QoL
+- ✅ **Save/Continue** - LocalStorage persistence
+- ✅ **Settings Panel** - Quality, effects, audio
+- ✅ **High Score Leaderboard**
+- ✅ **Pointer Lock** - Released on pause/game over
 
 ---
-*Last updated: 2026-02-04*
+
+## 🔮 Future Ideas
+
+### Gameplay
+- [ ] **Boss Waves** - Special challenge waves with unique mechanics
+- [ ] **Combo Chains** - Visual feedback for long combos
+- [ ] **Daily Challenge** - Seeded run that everyone plays
+- [ ] **Endless Mode Variants** - Speed run, survival, zen mode
+
+### Block Types
+- [ ] **Gravity Block** - Creates local gravity well
+- [ ] **Mirror Block** - Reflects ball at specific angle
+- [ ] **Bomb Block** - Countdown timer, explodes if not destroyed
+- [ ] **Split Block** - Ball splits into two on hit
+
+### Power-ups
+- [ ] **Magnet Paddle** - Ball curves toward paddle
+- [ ] **Laser** - Shoot projectiles from paddle
+- [ ] **Freeze** - Stops all blocks from rotating
+- [ ] **Ghost Ball** - Passes through paddle once
+
+### Visuals
+- [ ] **More Shader Effects** - CRT scanlines, chromatic aberration options
+- [ ] **Theme Options** - Color palettes, visual presets
+- [ ] **Achievements** - Visual badges/unlocks
+- [ ] **Background Music** - Reactive to gameplay
+
+### Social
+- [ ] **Global Leaderboard** - Online high scores
+- [ ] **Share Replay** - Share seed + input recording
+- [ ] **Twitch Integration** - Chat controls game
+
+---
+
+## 🐛 Known Issues
+- None critical currently
+
+---
+
+*Last updated: 2026-02-06*
