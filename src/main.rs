@@ -19,46 +19,66 @@ mod wasm_game {
     use roto_pong::settings::Settings;
     use roto_pong::sim::{GameState, TickInput, tick};
 
-    // JS binding for pointer lock
+    // JS bindings for pointer lock and mobile detection
     #[wasm_bindgen(inline_js = "
+        export function is_mobile_device() {
+            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) 
+                || ('ontouchstart' in window) 
+                || (navigator.maxTouchPoints > 0);
+        }
+        
         export function request_pointer_lock() {
+            // Skip on mobile - pointer lock doesn't work
+            if (is_mobile_device()) return;
+            
             const canvas = document.getElementById('canvas');
-            console.log('request_pointer_lock called, canvas:', canvas);
             if (canvas) {
-                console.log('Requesting pointer lock...');
                 const result = canvas.requestPointerLock();
-                console.log('requestPointerLock result:', result);
                 if (result && result.then) {
-                    result.then(() => {
-                        console.log('Pointer lock promise resolved');
-                        console.log('pointerLockElement:', document.pointerLockElement);
-                        console.log('Is canvas locked?', document.pointerLockElement === canvas);
-                    }).catch(e => console.error('Pointer lock failed:', e));
+                    result.catch(e => console.warn('Pointer lock failed:', e));
                 }
-                // Also check immediately
-                setTimeout(() => {
-                    console.log('After 100ms - pointerLockElement:', document.pointerLockElement);
-                }, 100);
             }
         }
         
         export function check_pointer_lock() {
-            const el = document.pointerLockElement;
-            console.log('Current pointerLockElement:', el);
-            return el !== null;
+            return document.pointerLockElement !== null;
         }
         
         export function exit_pointer_lock() {
             if (document.pointerLockElement) {
                 document.exitPointerLock();
-                console.log('Exited pointer lock');
             }
+        }
+        
+        export function request_fullscreen() {
+            const elem = document.documentElement;
+            if (elem.requestFullscreen) {
+                elem.requestFullscreen();
+            } else if (elem.webkitRequestFullscreen) {
+                elem.webkitRequestFullscreen();
+            }
+        }
+        
+        export function exit_fullscreen() {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            }
+        }
+        
+        export function is_fullscreen() {
+            return !!(document.fullscreenElement || document.webkitFullscreenElement);
         }
     ")]
     extern "C" {
+        fn is_mobile_device() -> bool;
         fn request_pointer_lock();
         fn check_pointer_lock() -> bool;
         fn exit_pointer_lock();
+        fn request_fullscreen();
+        fn exit_fullscreen();
+        fn is_fullscreen() -> bool;
     }
 
     /// Game instance holding all state
@@ -83,6 +103,8 @@ mod wasm_game {
         score_submitted: bool,
         // Audio
         audio: roto_pong::audio::AudioManager,
+        // Mobile device detection
+        is_mobile: bool,
     }
 
     impl Game {
@@ -108,6 +130,7 @@ mod wasm_game {
                 score_submitted: false,
                 settings,
                 audio,
+                is_mobile: is_mobile_device(),
             }
         }
 
@@ -779,6 +802,35 @@ mod wasm_game {
             });
             let _ = canvas
                 .add_event_listener_with_callback("touchstart", closure.as_ref().unchecked_ref());
+            closure.forget();
+        }
+
+        // Touch end (clear target when finger lifts)
+        {
+            let game = game.clone();
+            let closure = Closure::<dyn FnMut(_)>::new(move |event: TouchEvent| {
+                event.prevent_default();
+                // Only clear if no touches remain
+                if event.touches().length() == 0 {
+                    let mut g = game.borrow_mut();
+                    g.input.target_theta = None;
+                }
+            });
+            let _ = canvas
+                .add_event_listener_with_callback("touchend", closure.as_ref().unchecked_ref());
+            closure.forget();
+        }
+
+        // Touch cancel (treat same as touch end)
+        {
+            let game = game.clone();
+            let closure = Closure::<dyn FnMut(_)>::new(move |event: TouchEvent| {
+                event.prevent_default();
+                let mut g = game.borrow_mut();
+                g.input.target_theta = None;
+            });
+            let _ = canvas
+                .add_event_listener_with_callback("touchcancel", closure.as_ref().unchecked_ref());
             closure.forget();
         }
 

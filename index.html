@@ -845,10 +845,152 @@
             0%, 100% { transform: scale(1); opacity: 1; }
             50% { transform: scale(1.1); opacity: 0.8; }
         }
+        
+        /* Mobile responsive styles */
+        @media (max-width: 768px) {
+            #hud {
+                padding: 0.5rem 0.75rem;
+            }
+            .hud-left, .hud-right {
+                gap: 0.75rem;
+            }
+            .hud-label {
+                font-size: 0.55rem;
+            }
+            .hud-value {
+                font-size: 1rem;
+            }
+            .multiplier {
+                font-size: 0.7rem;
+            }
+            #serve-prompt {
+                font-size: 1rem;
+                bottom: 12%;
+            }
+            .powerup-icon {
+                width: 28px;
+                height: 28px;
+                font-size: 0.9rem;
+            }
+            #game-over h1 {
+                font-size: 2rem;
+            }
+            #game-over .stats {
+                font-size: 1rem;
+            }
+            #pause-menu h1 {
+                font-size: 2rem;
+            }
+            .menu-title {
+                font-size: 2.5rem;
+            }
+            .menu-subtitle {
+                font-size: 0.8rem;
+                letter-spacing: 0.2em;
+            }
+            .menu-buttons button {
+                padding: 0.75rem 1.5rem;
+                font-size: 0.95rem;
+                min-width: 200px;
+            }
+            #settings-modal h1,
+            #highscores-modal h1,
+            #howtoplay-modal h1 {
+                font-size: 1.8rem;
+            }
+            .settings-content,
+            .highscores-list,
+            .howtoplay-content {
+                padding: 1rem;
+                max-height: 60vh;
+            }
+            .setting-label {
+                font-size: 0.9rem;
+            }
+        }
+        
+        /* Portrait orientation warning for small screens */
+        @media (max-width: 480px) and (orientation: portrait) {
+            #orientation-hint {
+                display: flex !important;
+            }
+        }
+        #orientation-hint {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 100;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: system-ui, sans-serif;
+            color: #fff;
+            text-align: center;
+            padding: 2rem;
+        }
+        #orientation-hint .icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            animation: rotate-hint 2s ease-in-out infinite;
+        }
+        @keyframes rotate-hint {
+            0%, 100% { transform: rotate(0deg); }
+            50% { transform: rotate(90deg); }
+        }
+        #orientation-hint h2 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+        #orientation-hint p {
+            color: #888;
+            font-size: 0.9rem;
+        }
+        
+        /* Fullscreen button for mobile */
+        #fullscreen-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 1.2rem;
+            cursor: pointer;
+            z-index: 15;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(5px);
+        }
+        #fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        @media (max-width: 768px) {
+            #fullscreen-btn {
+                display: flex;
+            }
+        }
     </style>
 </head>
 <body>
+    <!-- Orientation hint for portrait mobile -->
+    <div id="orientation-hint">
+        <div class="icon">📱</div>
+        <h2>Rotate Your Device</h2>
+        <p>Roto Pong plays best in landscape mode</p>
+    </div>
+    
     <div id="game-container">
+        <!-- Fullscreen button for mobile -->
+        <button id="fullscreen-btn" title="Toggle Fullscreen">⛶</button>
+        
         <div id="loading">Loading...</div>
         <div id="webgpu-error" class="hidden">
             <h2>WebGPU Not Supported</h2>
@@ -1142,25 +1284,62 @@
         </div>
     </div>
     <script type="module">
-        // Set up pointer lock on canvas click (must be direct user gesture)
+        // Detect mobile device
+        function isMobile() {
+            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) 
+                || ('ontouchstart' in window) 
+                || (navigator.maxTouchPoints > 0);
+        }
+        
+        // Set up pointer lock on canvas click (desktop only)
         document.addEventListener('DOMContentLoaded', () => {
             const canvas = document.getElementById('canvas');
-            if (canvas) {
+            const fullscreenBtn = document.getElementById('fullscreen-btn');
+            
+            // Skip pointer lock on mobile - use touch controls instead
+            if (canvas && !isMobile()) {
                 canvas.addEventListener('click', async (e) => {
                     if (!document.pointerLockElement) {
                         try {
                             await canvas.requestPointerLock({ unadjustedMovement: true });
-                            console.log('Pointer lock requested with unadjustedMovement');
                         } catch (err) {
-                            // Fallback without unadjustedMovement
                             try {
                                 await canvas.requestPointerLock();
-                                console.log('Pointer lock requested (standard)');
                             } catch (err2) {
-                                console.error('Pointer lock failed:', err2);
+                                // Silently fail - mobile or unsupported
                             }
                         }
                     }
+                });
+            }
+            
+            // Fullscreen button for mobile
+            if (fullscreenBtn) {
+                fullscreenBtn.addEventListener('click', () => {
+                    if (document.fullscreenElement || document.webkitFullscreenElement) {
+                        if (document.exitFullscreen) {
+                            document.exitFullscreen();
+                        } else if (document.webkitExitFullscreen) {
+                            document.webkitExitFullscreen();
+                        }
+                        fullscreenBtn.textContent = '⛶';
+                    } else {
+                        const elem = document.documentElement;
+                        if (elem.requestFullscreen) {
+                            elem.requestFullscreen();
+                        } else if (elem.webkitRequestFullscreen) {
+                            elem.webkitRequestFullscreen();
+                        }
+                        fullscreenBtn.textContent = '⛶';
+                    }
+                });
+                
+                // Update button on fullscreen change
+                document.addEventListener('fullscreenchange', () => {
+                    fullscreenBtn.textContent = document.fullscreenElement ? '✕' : '⛶';
+                });
+                document.addEventListener('webkitfullscreenchange', () => {
+                    fullscreenBtn.textContent = document.webkitFullscreenElement ? '✕' : '⛶';
                 });
             }
         });
