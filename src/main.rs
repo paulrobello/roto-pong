@@ -105,6 +105,9 @@ mod wasm_game {
         audio: roto_pong::audio::AudioManager,
         // Mobile device detection
         is_mobile: bool,
+        // Arrow key states for keyboard paddle control
+        key_left: bool,
+        key_right: bool,
     }
 
     impl Game {
@@ -131,6 +134,8 @@ mod wasm_game {
                 settings,
                 audio,
                 is_mobile: is_mobile_device(),
+                key_left: false,
+                key_right: false,
             }
         }
 
@@ -149,6 +154,16 @@ mod wasm_game {
         fn update(&mut self, dt: f32, time: f64) {
             let dt = dt.min(0.1);
             self.accumulator += dt;
+
+            // Apply arrow key paddle movement
+            // Speed: ~3 radians/sec = full circle in ~2 seconds
+            const ARROW_SPEED: f32 = 3.0;
+            if self.key_left || self.key_right {
+                let direction = if self.key_left { 1.0 } else { -1.0 };
+                let delta = direction * ARROW_SPEED * dt;
+                let current = self.state.paddle.theta;
+                self.input.target_theta = Some(current + delta);
+            }
 
             let mut substeps = 0;
             while self.accumulator >= SIM_DT && substeps < MAX_SUBSTEPS {
@@ -872,6 +887,8 @@ mod wasm_game {
                 match event.key().as_str() {
                     " " | "Enter" => g.input.launch = true,
                     "Escape" => g.input.pause = true,
+                    "ArrowLeft" | "a" | "A" => g.key_left = true,
+                    "ArrowRight" | "d" | "D" => g.key_right = true,
                     "+" | "=" => g.input.skip_wave = true, // Debug: skip to next wave
                     "i" | "I" => {
                         g.input.idle_mode = !g.input.idle_mode;
@@ -895,6 +912,23 @@ mod wasm_game {
             });
             let _ = window
                 .add_event_listener_with_callback("keydown", closure.as_ref().unchecked_ref());
+            closure.forget();
+        }
+
+        // Keyboard up (for arrow key release)
+        {
+            let game = game.clone();
+            let window = web_sys::window().unwrap();
+            let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::KeyboardEvent| {
+                let mut g = game.borrow_mut();
+                match event.key().as_str() {
+                    "ArrowLeft" | "a" | "A" => g.key_left = false,
+                    "ArrowRight" | "d" | "D" => g.key_right = false,
+                    _ => {}
+                }
+            });
+            let _ = window
+                .add_event_listener_with_callback("keyup", closure.as_ref().unchecked_ref());
             closure.forget();
         }
     }
