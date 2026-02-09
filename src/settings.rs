@@ -106,6 +106,15 @@ pub struct Settings {
     pub reduced_motion: bool,
     /// High contrast mode
     pub high_contrast: bool,
+
+    // === Controls ===
+    /// Keyboard paddle speed (radians per second, default 6.0)
+    #[serde(default = "default_keyboard_sensitivity")]
+    pub keyboard_sensitivity: f32,
+}
+
+fn default_keyboard_sensitivity() -> f32 {
+    6.0
 }
 
 impl Default for Settings {
@@ -132,6 +141,9 @@ impl Default for Settings {
             // Accessibility
             reduced_motion: false,
             high_contrast: false,
+
+            // Controls
+            keyboard_sensitivity: 6.0,
         }
     }
 }

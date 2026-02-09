@@ -156,11 +156,9 @@ mod wasm_game {
             self.accumulator += dt;
 
             // Apply arrow key paddle movement
-            // Speed: ~3 radians/sec = full circle in ~2 seconds
-            const ARROW_SPEED: f32 = 3.0;
             if self.key_left || self.key_right {
                 let direction = if self.key_left { 1.0 } else { -1.0 };
-                let delta = direction * ARROW_SPEED * dt;
+                let delta = direction * self.settings.keyboard_sensitivity * dt;
                 let current = self.state.paddle.theta;
                 self.input.target_theta = Some(current + delta);
             }
@@ -1094,6 +1092,15 @@ mod wasm_game {
         if let Some(el) = document.get_element_by_id("sfx-volume-value") {
             el.set_text_content(Some(&format!("{}%", (settings.sfx_volume * 100.0) as u32)));
         }
+
+        // Keyboard sensitivity slider
+        if let Some(slider) = document.get_element_by_id("keyboard-sensitivity") {
+            let input: web_sys::HtmlInputElement = slider.dyn_into().unwrap();
+            input.set_value(&format!("{}", settings.keyboard_sensitivity));
+        }
+        if let Some(el) = document.get_element_by_id("keyboard-sensitivity-value") {
+            el.set_text_content(Some(&format!("{:.1}", settings.keyboard_sensitivity)));
+        }
     }
 
     fn setup_settings_modal(game: Rc<RefCell<Game>>) {
@@ -1271,6 +1278,30 @@ mod wasm_game {
                     .add_event_listener_with_callback("input", closure.as_ref().unchecked_ref());
                 closure.forget();
             }
+        }
+
+        // Keyboard sensitivity slider
+        if let Some(slider) = document.get_element_by_id("keyboard-sensitivity") {
+            let game = game.clone();
+            let closure = Closure::<dyn FnMut(_)>::new(move |event: web_sys::Event| {
+                if let Some(target) = event.target() {
+                    let input: web_sys::HtmlInputElement = target.dyn_into().unwrap();
+                    let value: f32 = input.value().parse().unwrap_or(6.0);
+
+                    let mut g = game.borrow_mut();
+                    g.settings.keyboard_sensitivity = value;
+                    g.settings.save();
+
+                    // Update value display
+                    let document = web_sys::window().unwrap().document().unwrap();
+                    if let Some(el) = document.get_element_by_id("keyboard-sensitivity-value") {
+                        el.set_text_content(Some(&format!("{:.1}", value)));
+                    }
+                }
+            });
+            let _ = slider
+                .add_event_listener_with_callback("input", closure.as_ref().unchecked_ref());
+            closure.forget();
         }
     }
 
